@@ -46,8 +46,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Apply migrations
-        run: pnpm --filter @questa/api prisma:deploy
+      # E2E creates and migrates its own "questa_test" database.
       - run: pnpm test:e2e
 
   docker:
