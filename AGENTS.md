@@ -18,7 +18,7 @@ Nguồn quyết định: [`docs/spec.md`](docs/spec.md). Khi đặc tả thiếu
 
 ## Quy trình
 
-1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **0**.
+1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **1**.
 2. Cuối mỗi giai đoạn: kiểm tra "Định nghĩa hoàn thành" ở mục 10 của đặc tả, rồi **dừng lại báo cáo** cho chủ dự án. Chủ dự án review xong mới gắn tag git.
 3. Giai đoạn 2 cố ý chứa lỗi bán trùng. Không sửa sớm. Gắn tag `v0-naive` trước khi sang giai đoạn 3.
 
@@ -36,7 +36,8 @@ apps/
       prisma/             # PrismaModule, PrismaService
       redis/              # RedisModule
       modules/            # mỗi tính năng một thư mục: *.module.ts, *.controller.ts,
-                          # *.service.ts, dto/, *.spec.ts
+                          # *.service.ts, dto/, *.spec.ts. Hai tài nguyên luôn đi cùng
+                          # nhau (concert và đêm diễn) nằm chung một module.
       generated/          # Prisma client (sinh ra, không commit)
     prisma/               # schema.prisma, migrations/, seed.ts
     test/                 # e2e test (*.e2e-spec.ts)
@@ -81,8 +82,9 @@ Chạy từ thư mục gốc repo:
 | `pnpm install` | Cài dependency (tự chạy `prisma generate`) |
 | `pnpm format:check` / `pnpm lint` / `pnpm typecheck` | Kiểm tra code |
 | `pnpm test` | Unit test (không cần DB) |
-| `pnpm test:e2e` | E2E test (cần PostgreSQL và Redis đang chạy) |
+| `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
+| `pnpm --filter @questa/api db:seed` | Xóa sạch DB dev rồi nạp dữ liệu mẫu, ghi token cho k6 vào `load-tests/data/` |
 
 Cổng trên máy chủ dự án:
 - PostgreSQL: `5433` (máy đã có PostgreSQL chiếm 5432).

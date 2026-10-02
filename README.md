@@ -4,7 +4,7 @@
 
 A concert ticketing backend built to sell exactly the seats that exist when thousands of people buy at the same moment, and to prove it with numbers.
 
-> **Status:** Phase 0 (foundation) of the roadmap. Booking features land from phase 1 on. See [the roadmap](docs/spec.md#10-lộ-trình-triển-khai).
+> **Status:** Phase 1 done: data model, authentication with rotating refresh tokens, roles, concert and performance catalog, seed data. Booking starts in phase 2. See [the roadmap](docs/spec.md#10-lộ-trình-triển-khai).
 
 ## The problem
 
@@ -28,6 +28,16 @@ curl localhost:3000/api/v1/health/ready
 
 `docker compose up` starts PostgreSQL and Redis, applies migrations, then starts the API.
 
+- API docs (Swagger): <http://localhost:3000/api/docs>
+- Load sample data (wipes the development database):
+
+  ```bash
+  pnpm install
+  pnpm --filter @questa/api db:seed
+  ```
+
+  Accounts: `organizer@questa.test`, `staff@questa.test`, `customer0001@questa.test` … `customer5000@questa.test`, all with the password in `SEED_PASSWORD` (`.env.example`).
+
 ### Develop on the host
 
 ```bash
@@ -40,7 +50,7 @@ pnpm --filter @questa/api start:dev
 | --- | --- |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Static checks |
 | `pnpm test` | Unit tests |
-| `pnpm test:e2e` | End-to-end tests (needs PostgreSQL and Redis) |
+| `pnpm test:e2e` | End-to-end tests on a separate `questa_test` database (needs PostgreSQL and Redis) |
 
 ## Benchmarks
 

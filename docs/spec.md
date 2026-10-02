@@ -117,8 +117,7 @@ apps/
         health/
         auth/
         users/
-        concerts/
-        performances/     # đêm diễn, khu, đợt mở bán
+        concerts/         # concert và đêm diễn (khu, đợt mở bán): một aggregate
         seats/            # sơ đồ ghế, WebSocket gateway
         reservations/     # giữ vé, nhả vé
         orders/           # đơn hàng, state machine
@@ -151,7 +150,7 @@ Thư mục chỉ được tạo khi giai đoạn tương ứng cần đến.
 
 ## 4. Mô hình dữ liệu
 
-Database tự bảo vệ tính đúng bằng ràng buộc, kể cả khi code ứng dụng có lỗi. Khóa chính dùng UUID, tiền lưu bằng số nguyên VND, thời gian lưu dạng `timestamptz`.
+Database tự bảo vệ tính đúng bằng ràng buộc, kể cả khi code ứng dụng có lỗi. Khóa chính dùng UUID v7 do PostgreSQL sinh (`uuidv7()`), tiền lưu bằng số nguyên VND, thời gian lưu dạng `timestamptz`. Tên bảng và cột dạng `snake_case`, model Prisma dạng `PascalCase`.
 
 Thuật ngữ: `concerts` là chương trình; `performances` là một đêm diễn cụ thể và là đơn vị bán vé. Từ "event" chỉ dùng cho sự kiện nghiệp vụ (Kafka, outbox, WebSocket), để không nhầm lẫn.
 
@@ -160,7 +159,7 @@ Thuật ngữ: `concerts` là chương trình; `performances` là một đêm di
 | Bảng | Cột chính | Ghi chú |
 | --- | --- | --- |
 | `users` | `email`, `password_hash`, `full_name`, `role` | `email` unique |
-| `refresh_tokens` | `user_id`, `token_hash`, `expires_at`, `revoked_at`, `replaced_by` | Xoay vòng: mỗi lần dùng thì thu hồi token cũ và cấp token mới |
+| `refresh_tokens` | `user_id`, `family_id`, `token_hash`, `expires_at`, `revoked_at`, `replaced_by` | Xoay vòng: mỗi lần dùng thì thu hồi token cũ và cấp token mới trong cùng family. Dùng lại token đã thu hồi thì thu hồi cả family |
 | `concerts` | `organizer_id`, `name`, `artist`, `description` | Chương trình, gồm một hoặc nhiều đêm diễn |
 | `performances` | `concert_id`, `venue`, `starts_at`, `status`, `max_tickets_per_user` | `status`: `DRAFT`, `PUBLISHED`, `CANCELLED` |
 | `sale_phases` | `performance_id`, `type`, `starts_at`, `ends_at` | `type`: `PRESALE`, `GENERAL` |
@@ -326,16 +325,19 @@ Mỗi bất biến có ít nhất một test tự động, và một script ki�
 
 ## 7. API
 
-Mọi API có tiền tố `/api/v1`, trả JSON, và được mô tả trong Swagger. Lỗi trả về theo một định dạng thống nhất gồm `code`, `message` và `details`.
+Mọi API có tiền tố `/api/v1`, trả JSON, và được mô tả trong Swagger tại `/api/docs`. Lỗi trả về theo một định dạng thống nhất gồm `code`, `message` và `details`.
+
+Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpoint công khai được đánh dấu riêng; trên endpoint công khai, token hợp lệ (nếu có) vẫn được đọc, ví dụ để ban tổ chức xem được bản nháp của mình. Refresh token nằm trong cookie `httpOnly`, `SameSite=Strict`, chỉ gửi tới `/api/v1/auth`.
 
 | Phương thức | Đường dẫn | Quyền | Mô tả |
 | --- | --- | --- | --- |
 | POST | `/auth/register` | Công khai | Đăng ký |
-| POST | `/auth/login` | Công khai | Đăng nhập, trả access token và refresh token |
-| POST | `/auth/refresh` | Công khai | Xoay vòng refresh token, cấp access token mới |
-| POST | `/auth/logout` | Đã đăng nhập | Thu hồi refresh token |
+| POST | `/auth/login` | Công khai | Đăng nhập, trả access token trong body và đặt refresh token vào cookie |
+| POST | `/auth/refresh` | Cookie refresh | Xoay vòng refresh token, cấp access token mới |
+| POST | `/auth/logout` | Cookie refresh | Thu hồi refresh token (cả family) và xóa cookie |
+| GET | `/users/me` | Đã đăng nhập | Thông tin tài khoản hiện tại |
 | GET | `/concerts` | Công khai | Danh sách concert, phân trang, có cache |
-| GET | `/concerts/:id` | Công khai | Chi tiết concert và các đêm diễn, có cache |
+| GET | `/concerts/:id` | Công khai | Chi tiết concert và các đêm diễn đã công bố (chủ concert thấy cả bản nháp), có cache |
 | POST | `/concerts` | `ORGANIZER` | Tạo concert |
 | POST | `/concerts/:id/performances` | `ORGANIZER` | Tạo đêm diễn kèm khu, ghế và đợt mở bán |
 | GET | `/performances/:id` | Công khai | Chi tiết đêm diễn, khu, giá, đợt mở bán, có cache |
@@ -520,7 +522,7 @@ Hoàn thành khi: `docker compose up` chạy được, `/health` trả 200, CI x
 - Đăng ký, đăng nhập, refresh token xoay vòng, đăng xuất, RBAC ba vai trò.
 - API tạo và xem concert; tạo, sửa, công bố, xem đêm diễn; API xem ghế và số vé còn lại.
 - Định dạng lỗi thống nhất, validate input, Swagger.
-- Script seed: 1 concert có 2 đêm diễn, mỗi đêm 10.000 vé (8.000 ghế ngồi chia VIP, CAT 1, CAT 2 và 2.000 vé đứng); 1 đêm diễn thử nhỏ gồm 100 ghế ngồi và 500 vé đứng; 5.000 tài khoản thử kèm token cho load test.
+- Script seed: 1 concert có 2 đêm diễn, mỗi đêm 10.000 vé (8.000 ghế ngồi chia VIP, CAT 1, CAT 2 và 2.000 vé đứng); 1 đêm diễn thử nhỏ gồm 100 ghế ngồi và 500 vé đứng; 5.000 tài khoản thử kèm token cho load test (ghi ra `load-tests/data/`, không commit).
 
 Hoàn thành khi: e2e test cho auth và danh mục qua, seed chạy dưới 1 phút.
 

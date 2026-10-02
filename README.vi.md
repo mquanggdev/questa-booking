@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Giai đoạn 0 (nền móng) của lộ trình. Các tính năng đặt vé bắt đầu từ giai đoạn 1. Xem [lộ trình](docs/spec.md#10-lộ-trình-triển-khai).
+> **Trạng thái:** Xong giai đoạn 1: mô hình dữ liệu, xác thực với refresh token xoay vòng, phân quyền, danh mục concert và đêm diễn, dữ liệu mẫu. Đặt vé bắt đầu từ giai đoạn 2. Xem [lộ trình](docs/spec.md#10-lộ-trình-triển-khai).
 
 ## Bài toán
 
@@ -30,6 +30,16 @@ curl localhost:3000/api/v1/health/ready
 
 `docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API.
 
+- Tài liệu API (Swagger): <http://localhost:3000/api/docs>
+- Nạp dữ liệu mẫu (xóa sạch database dev):
+
+  ```bash
+  pnpm install
+  pnpm --filter @questa/api db:seed
+  ```
+
+  Tài khoản: `organizer@questa.test`, `staff@questa.test`, `customer0001@questa.test` … `customer5000@questa.test`, mật khẩu là giá trị `SEED_PASSWORD` trong `.env.example`.
+
 ### Phát triển trên máy
 
 ```bash
@@ -42,7 +52,7 @@ pnpm --filter @questa/api start:dev
 | --- | --- |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Kiểm tra tĩnh |
 | `pnpm test` | Unit test |
-| `pnpm test:e2e` | E2E test (cần PostgreSQL và Redis) |
+| `pnpm test:e2e` | E2E test trên database riêng `questa_test` (cần PostgreSQL và Redis) |
 
 ## Benchmark
 
