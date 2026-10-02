@@ -1,0 +1,14 @@
+// Models are added in phase 1. Locking statements live in raw SQL,
+// never hidden behind the ORM.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+  // tsc keeps import paths as written, so the compiled client must import .js
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}

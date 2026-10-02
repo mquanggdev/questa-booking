@@ -1,0 +1,18 @@
+{
+  "name": "questa-booking",
+  "private": true,
+  "description": "High-concurrency concert ticketing backend (portfolio project)",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "lint": "pnpm -r run lint",
+    "format": "pnpm -r run format",
+    "format:check": "pnpm -r run format:check",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm -r run test:e2e",
+    "build": "pnpm -r run build"
+  }
+}

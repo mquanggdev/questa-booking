@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+minimumReleaseAgeExclude:
+  - nestjs-pino@5.3.0

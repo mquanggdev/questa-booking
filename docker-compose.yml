@@ -1,0 +1,81 @@
+name: questa
+
+x-api-env: &api-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PORT: 3000
+  DATABASE_URL: postgresql://${POSTGRES_USER:-questa}:${POSTGRES_PASSWORD:-questa}@postgres:5432/${POSTGRES_DB:-questa}
+  REDIS_URL: redis://redis:6379
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-questa}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-questa}
+      POSTGRES_DB: ${POSTGRES_DB:-questa}
+    ports:
+      - '${POSTGRES_PORT:-5433}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 1g
+
+  redis:
+    image: redis:8-alpine
+    # AOF on: a Redis restart should not silently drop holds (PostgreSQL still
+    # decides correctness, but fewer surprises during load tests).
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+
+  # One-off: applies pending migrations, then exits. The API starts only after
+  # it succeeds, so a fresh machine gets a ready schema from `docker compose up`.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: build
+    working_dir: /repo/apps/api
+    command: ['pnpm', 'exec', 'prisma', 'migrate', 'deploy']
+    environment: *api-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    environment: *api-env
+    ports:
+      - '${API_PORT:-3000}:3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health/ready']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 512m
+
+volumes:
+  pgdata:
+  redisdata:

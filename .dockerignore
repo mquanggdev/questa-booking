@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/coverage
+**/src/generated
+**/*.tsbuildinfo
+.git
+.env
+.env.*
+!.env.example
+docs
+load-tests
+.claude
