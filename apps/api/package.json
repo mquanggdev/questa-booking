@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "description": "Questa Booking API and worker",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "build": "nest build",

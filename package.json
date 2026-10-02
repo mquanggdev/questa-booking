@@ -1,6 +1,7 @@
 {
   "name": "questa-booking",
   "private": true,
+  "license": "MIT",
   "description": "High-concurrency concert ticketing backend (portfolio project)",
   "packageManager": "pnpm@12.8.1",
   "engines": {
