@@ -1,15 +1,16 @@
-import {
-  Controller,
-  Get,
-  Inject,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Controller, Get, HttpStatus, Inject } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { Redis } from 'ioredis';
+import { Public } from '../../common/auth/auth.decorators.js';
+import { AppException } from '../../common/errors/app.exception.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { REDIS } from '../../redis/redis.module.js';
 
 type CheckResult = 'up' | 'down';
 
+@ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(
@@ -36,7 +37,12 @@ export class HealthController {
     ]);
     const checks = { database, redis };
     if (database === 'down' || redis === 'down') {
-      throw new ServiceUnavailableException({ status: 'error', checks });
+      throw new AppException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        ErrorCode.SERVICE_UNAVAILABLE,
+        'A dependency is unavailable',
+        checks,
+      );
     }
     return { status: 'ok', checks };
   }
