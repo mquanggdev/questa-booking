@@ -1,5 +1,6 @@
-// Models are added in phase 1. Locking statements live in raw SQL,
-// never hidden behind the ORM.
+// Locking statements live in raw SQL, never hidden behind the ORM.
+// Partial indexes and check constraints are written in migration SQL,
+// because Prisma cannot express them in this file.
 
 generator client {
   provider = "prisma-client"
@@ -11,4 +12,208 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ---------- Identity ----------
+
+enum Role {
+  CUSTOMER
+  ORGANIZER
+  STAFF
+}
+
+model User {
+  id           String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         Role     @default(CUSTOMER)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  refreshTokens RefreshToken[]
+  concerts      Concert[]
+  orders        Order[]
+
+  @@map("users")
+}
+
+// Opaque refresh tokens, stored only as a SHA-256 hash. Every refresh revokes
+// the presented token and issues a new one in the same family; presenting a
+// revoked token again revokes the whole family (reuse detection).
+model RefreshToken {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  familyId   String    @map("family_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+  replacedBy String?   @map("replaced_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ---------- Catalog ----------
+
+model Concert {
+  id          String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  organizerId String   @map("organizer_id") @db.Uuid
+  name        String
+  artist      String
+  description String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  organizer    User          @relation(fields: [organizerId], references: [id])
+  performances Performance[]
+
+  @@index([organizerId])
+  @@map("concerts")
+}
+
+enum PerformanceStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+}
+
+// One night of a concert: the unit that tickets are sold for.
+model Performance {
+  id                String            @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  concertId         String            @map("concert_id") @db.Uuid
+  venue             String
+  startsAt          DateTime          @map("starts_at") @db.Timestamptz
+  status            PerformanceStatus @default(DRAFT)
+  maxTicketsPerUser Int               @default(6) @map("max_tickets_per_user")
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  concert    Concert     @relation(fields: [concertId], references: [id])
+  salePhases SalePhase[]
+  zones      Zone[]
+  seats      Seat[]
+  orders     Order[]
+
+  @@index([concertId])
+  @@map("performances")
+}
+
+enum SalePhaseType {
+  PRESALE
+  GENERAL
+}
+
+model SalePhase {
+  id            String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  performanceId String        @map("performance_id") @db.Uuid
+  type          SalePhaseType
+  startsAt      DateTime      @map("starts_at") @db.Timestamptz
+  endsAt        DateTime      @map("ends_at") @db.Timestamptz
+
+  performance Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+
+  @@index([performanceId])
+  @@map("sale_phases")
+}
+
+enum ZoneType {
+  SEATED
+  STANDING
+}
+
+// Prices are whole VND. held_count/sold_count are the inventory of a
+// STANDING zone; SEATED zones track inventory per seat.
+model Zone {
+  id            String   @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  performanceId String   @map("performance_id") @db.Uuid
+  name          String
+  type          ZoneType
+  price         Int
+  capacity      Int
+  heldCount     Int      @default(0) @map("held_count")
+  soldCount     Int      @default(0) @map("sold_count")
+
+  performance Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  seats       Seat[]
+  orderItems  OrderItem[]
+
+  @@unique([performanceId, name])
+  @@map("zones")
+}
+
+enum SeatStatus {
+  AVAILABLE
+  HELD
+  SOLD
+}
+
+model Seat {
+  id            String     @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  performanceId String     @map("performance_id") @db.Uuid
+  zoneId        String     @map("zone_id") @db.Uuid
+  rowLabel      String     @map("row_label")
+  seatNumber    Int        @map("seat_number")
+  status        SeatStatus @default(AVAILABLE)
+
+  performance Performance @relation(fields: [performanceId], references: [id], onDelete: Cascade)
+  zone        Zone        @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  orderItems  OrderItem[]
+
+  @@unique([performanceId, zoneId, rowLabel, seatNumber])
+  @@index([performanceId, status])
+  @@map("seats")
+}
+
+// ---------- Orders ----------
+
+enum OrderStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELLED
+  REFUND_PENDING
+  REFUNDED
+}
+
+model Order {
+  id            String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  performanceId String      @map("performance_id") @db.Uuid
+  status        OrderStatus @default(PENDING)
+  totalAmount   Int         @map("total_amount")
+  expiresAt     DateTime    @map("expires_at") @db.Timestamptz
+  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+
+  user        User        @relation(fields: [userId], references: [id])
+  performance Performance @relation(fields: [performanceId], references: [id])
+  items       OrderItem[]
+
+  @@index([userId, performanceId])
+  @@index([status, expiresAt])
+  @@map("orders")
+}
+
+// One row per ticket. seat_id is null for STANDING tickets. A row stops
+// holding its seat when released_at is set (order expired, cancelled, refunded).
+model OrderItem {
+  id         String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId    String    @map("order_id") @db.Uuid
+  zoneId     String    @map("zone_id") @db.Uuid
+  seatId     String?   @map("seat_id") @db.Uuid
+  price      Int
+  releasedAt DateTime? @map("released_at") @db.Timestamptz
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  zone  Zone  @relation(fields: [zoneId], references: [id])
+  seat  Seat? @relation(fields: [seatId], references: [id])
+
+  @@index([orderId])
+  @@index([seatId])
+  @@map("order_items")
 }
