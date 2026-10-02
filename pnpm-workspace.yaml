@@ -2,6 +2,9 @@ packages:
   - apps/*
 allowBuilds:
   '@prisma/engines': true
+  '@scarf/scarf': false
+  argon2: true
+  esbuild: true
   prisma: true
 minimumReleaseAgeExclude:
   - nestjs-pino@5.3.0

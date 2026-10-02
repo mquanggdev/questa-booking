@@ -9,3 +9,6 @@ apps/api/src/generated/
 .DS_Store
 *.log
 .claude/settings.local.json
+
+# k6 data written by the seed script (contains tokens)
+load-tests/data/
