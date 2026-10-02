@@ -2,8 +2,8 @@ import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from './config/app-config.service.js';
 import { ConfigModule } from './config/config.module.js';
-import { PrismaModule } from './infra/prisma/prisma.module.js';
-import { RedisModule } from './infra/redis/redis.module.js';
+import { PrismaModule } from './prisma/prisma.module.js';
+import { RedisModule } from './redis/redis.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 
 @Module({

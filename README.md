@@ -14,7 +14,7 @@ Ticket on-sales are short, violent bursts of traffic where many buyers want the 
 
 NestJS 12 (TypeScript, ESM) · PostgreSQL 18 · Prisma 7 · Redis 8 · BullMQ · Kafka · Socket.IO · Next.js · k6 · Docker Compose · GitHub Actions · Prometheus and Grafana
 
-Why each one is here: [`docs/decisions/`](docs/decisions/).
+Why each one is here: [`docs/adr/`](docs/adr/).
 
 ## Run it
 
@@ -49,5 +49,5 @@ Starts at phase 2 with the naive, double-selling version. See [`docs/benchmarks.
 ## Documentation
 
 - [Specification](docs/spec.md) (Vietnamese)
-- [Architecture decision records](docs/decisions/) (Vietnamese)
+- [Architecture decision records](docs/adr/) (Vietnamese)
 - [Learning notes per phase](docs/learning/) (Vietnamese)

@@ -2,7 +2,7 @@
 
 Phiên bản 2 · 2026-10-02 · @minhquanggdev
 
-Bản này thay thế bản đề xuất ban đầu. Nó giữ nguyên ý tưởng và thêm các quyết định đã chốt giữa chủ dự án và agent. Quy tắc làm việc của agent nằm ở [`CLAUDE.md`](../CLAUDE.md). Lý do của từng quyết định kỹ thuật nằm ở [`docs/decisions/`](decisions/).
+Bản này thay thế bản đề xuất ban đầu. Nó giữ nguyên ý tưởng và thêm các quyết định đã chốt giữa chủ dự án và agent. Quy tắc làm việc của agent nằm ở [`AGENTS.md`](../AGENTS.md). Lý do của từng quyết định kỹ thuật nằm ở [`docs/adr/`](adr/).
 
 ## 1. Tổng quan
 
@@ -102,37 +102,50 @@ Một codebase NestJS chạy ở hai chế độ: tiến trình API (HTTP và We
 
 ```text
 apps/
-  api/
+  api/                    # NestJS
     src/
       main.ts             # khởi động API
       worker.ts           # khởi động worker (từ giai đoạn 4)
-      common/             # guard, filter, interceptor, decorator dùng chung
+      app.module.ts
       config/             # đọc và validate biến môi trường (zod)
-      infra/              # prisma, redis, queue, kafka
+      common/             # decorator, filter, guard, interceptor, pipe dùng chung
+      prisma/             # PrismaModule, PrismaService
+      redis/              # RedisModule
+      queue/              # cấu hình BullMQ (giai đoạn 4)
+      kafka/              # producer, consumer (giai đoạn 8)
       modules/
         health/
-        auth/  users/
-        catalog/          # concert, đêm diễn, khu, đợt mở bán
-        seats/            # sơ đồ ghế, trạng thái ghế, WebSocket gateway
+        auth/
+        users/
+        concerts/
+        performances/     # đêm diễn, khu, đợt mở bán
+        seats/            # sơ đồ ghế, WebSocket gateway
         reservations/     # giữ vé, nhả vé
         orders/           # đơn hàng, state machine
         payments/         # cổng thanh toán, IPN, hoàn tiền
         tickets/          # phát hành vé, check-in
         waiting-room/     # hàng chờ ảo
         outbox/           # bảng outbox, relay sang Kafka
-        notifications/  analytics/  audit/   # Kafka consumer
-    prisma/               # schema, migrations, seed
+        notifications/    # Kafka consumer
+        analytics/        # Kafka consumer
+        audit/            # Kafka consumer
+      generated/          # Prisma client (sinh ra, không commit)
+    prisma/               # schema.prisma, migrations/, seed.ts
     test/                 # e2e test
   web/                    # Next.js (từ giai đoạn 6)
 load-tests/               # kịch bản k6 và script kiểm tra bất biến
-infra/                    # cấu hình nginx, prometheus, grafana
+docker/                   # cấu hình nginx, prometheus, grafana
 docs/
-  spec.md  benchmarks.md
-  decisions/              # ADR
+  spec.md
+  benchmarks.md
+  adr/                    # quyết định kiến trúc
   learning/               # ghi chú học tập sau mỗi giai đoạn
-.claude/skills/           # skill cho agent
+.claude/skills/           # skill tham khảo cho agent
+AGENTS.md                 # quy tắc cho agent
 docker-compose.yml
 ```
+
+Mỗi module tính năng theo quy ước của NestJS: `*.module.ts`, `*.controller.ts`, `*.service.ts`, thư mục `dto/`, và unit test `*.spec.ts` đặt cạnh file được test.
 
 Thư mục chỉ được tạo khi giai đoạn tương ứng cần đến.
 
@@ -180,7 +193,7 @@ WHERE id = $1 AND held_count + sold_count + $n <= capacity
 
 Không có dòng nào bị ảnh hưởng nghĩa là khu đã hết vé. Ràng buộc check trên bảng là lớp bảo vệ cuối cùng.
 
-Khi 5.000 người cùng cập nhật một dòng, các câu lệnh phải xếp hàng chạy lần lượt (hot row). Giai đoạn 3 đo hiện tượng này. Sau đó thử chia bộ đếm thành N dòng con, mỗi dòng giữ một phần sức chứa, và ghi kết quả so sánh vào `docs/decisions/`.
+Khi 5.000 người cùng cập nhật một dòng, các câu lệnh phải xếp hàng chạy lần lượt (hot row). Giai đoạn 3 đo hiện tượng này. Sau đó thử chia bộ đếm thành N dòng con, mỗi dòng giữ một phần sức chứa, và ghi kết quả so sánh vào `docs/adr/`.
 
 ### Trạng thái ghế
 
@@ -497,7 +510,7 @@ Các giai đoạn làm tuần tự, được gom thành 4 mốc. Hết mỗi m�
 - Docker Compose với PostgreSQL và Redis; migration chạy tự động trước khi API khởi động.
 - Prisma, module cấu hình có validate, Pino, endpoint `/health` và `/health/ready`.
 - GitHub Actions chạy format, lint, typecheck, test, e2e và build image.
-- `CLAUDE.md`, skill cho agent, đặc tả này, ADR đầu tiên.
+- `AGENTS.md`, skill tham khảo cho agent, đặc tả này, ADR đầu tiên.
 
 Hoàn thành khi: `docker compose up` chạy được, `/health` trả 200, CI xanh.
 
@@ -613,7 +626,7 @@ README có hai bản: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Vi�
 - Bài toán và lý do nó khó, trong vài câu.
 - Sơ đồ kiến trúc.
 - Bảng benchmark qua các giai đoạn, bắt đầu từ bản bán trùng.
-- Giải thích từng quyết định chính và phương án đã loại, liên kết sang `docs/decisions/`.
+- Giải thích từng quyết định chính và phương án đã loại, liên kết sang `docs/adr/`.
 - Bảng phân vai BullMQ và Kafka.
 - Cách chạy bằng một lệnh, cách chạy load test.
 - Link demo, tài khoản thử, link Swagger.

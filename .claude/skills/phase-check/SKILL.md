@@ -30,14 +30,14 @@ pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e
 
 ## 3. Phase acceptance criteria
 
-Open `docs/spec.md` section 10, find the current phase (named in `CLAUDE.md`), and check each "Hoàn thành khi" item one by one with evidence. For invariants (I1–I12) introduced in this phase, name the test that proves each one.
+Open `docs/spec.md` section 10, find the current phase (named in `AGENTS.md`), and check each "Hoàn thành khi" item one by one with evidence. For invariants (I1–I12) introduced in this phase, name the test that proves each one.
 
 ## 4. Documentation
 
 - [ ] Swagger lists every endpoint that exists (from phase 1 on).
 - [ ] `README.md` and `README.vi.md` both updated, same structure and numbers.
-- [ ] New ADRs in `docs/decisions/` for decisions made in this phase.
-- [ ] Learning note `docs/learning/NN-*.md` for this phase.
+- [ ] New ADRs in `docs/adr/` for decisions made in this phase.
+- [ ] Learning note `docs/learning/phase-NN-*.md` for this phase.
 - [ ] From phase 2 on: new row in `docs/benchmarks.md`.
 - [ ] `.env.example` contains every variable in `apps/api/src/config/env.schema.ts`.
 

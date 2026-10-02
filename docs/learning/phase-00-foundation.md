@@ -9,7 +9,7 @@
 - `/api/v1/health` (liveness) và `/api/v1/health/ready` (readiness).
 - Docker Compose: PostgreSQL 18, Redis 8, service `migrate`, API.
 - GitHub Actions: format, lint, typecheck, unit test, e2e test (PostgreSQL và Redis chạy dạng service), build image.
-- `CLAUDE.md` và các skill cho agent.
+- `AGENTS.md` (quy tắc cho agent) và các skill tham khảo.
 
 ## Vì sao
 

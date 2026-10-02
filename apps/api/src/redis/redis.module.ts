@@ -6,7 +6,7 @@ import {
   OnApplicationShutdown,
 } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { AppConfigService } from '../../config/app-config.service.js';
+import { AppConfigService } from '../config/app-config.service.js';
 
 export const REDIS = Symbol('REDIS');
 

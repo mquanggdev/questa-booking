@@ -5,8 +5,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Redis } from 'ioredis';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
-import { REDIS } from '../../infra/redis/redis.module.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
+import { REDIS } from '../../redis/redis.module.js';
 
 type CheckResult = 'up' | 'down';
 

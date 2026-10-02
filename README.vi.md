@@ -16,7 +16,7 @@ Dự án bắt đầu từ đúng phiên bản lỗi đó, đo số ghế bị b
 
 NestJS 12 (TypeScript, ESM) · PostgreSQL 18 · Prisma 7 · Redis 8 · BullMQ · Kafka · Socket.IO · Next.js · k6 · Docker Compose · GitHub Actions · Prometheus và Grafana
 
-Lý do có mặt của từng công nghệ: [`docs/decisions/`](docs/decisions/).
+Lý do có mặt của từng công nghệ: [`docs/adr/`](docs/adr/).
 
 ## Chạy thử
 
@@ -51,5 +51,5 @@ Bắt đầu từ giai đoạn 2, với phiên bản ngây thơ còn bán trùng
 ## Tài liệu
 
 - [Đặc tả](docs/spec.md)
-- [Các quyết định kiến trúc (ADR)](docs/decisions/)
+- [Các quyết định kiến trúc (ADR)](docs/adr/)
 - [Ghi chú học tập theo giai đoạn](docs/learning/)
