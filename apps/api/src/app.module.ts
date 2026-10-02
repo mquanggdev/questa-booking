@@ -2,9 +2,12 @@ import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from './config/app-config.service.js';
 import { ConfigModule } from './config/config.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
+import { ConcertsModule } from './modules/concerts/concerts.module.js';
+import { HealthModule } from './modules/health/health.module.js';
+import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RedisModule } from './redis/redis.module.js';
-import { HealthModule } from './modules/health/health.module.js';
 
 @Module({
   imports: [
@@ -21,13 +24,20 @@ import { HealthModule } from './modules/health/health.module.js';
           autoLogging: {
             ignore: (req) => req.url?.includes('/health') ?? false,
           },
-          redact: ['req.headers.authorization', 'req.headers.cookie'],
+          redact: [
+            'req.headers.authorization',
+            'req.headers.cookie',
+            'res.headers["set-cookie"]',
+          ],
         },
       }),
     }),
     PrismaModule,
     RedisModule,
     HealthModule,
+    AuthModule,
+    UsersModule,
+    ConcertsModule,
   ],
 })
 export class AppModule {}
