@@ -62,8 +62,6 @@ Bắt đầu từ giai đoạn 2, với phiên bản ngây thơ còn bán trùng
 
 - [Đặc tả](docs/spec.md)
 - [Các quyết định kiến trúc (ADR)](docs/adr/)
-- [Ghi chú học tập theo giai đoạn](docs/learning/)
-- [Showcase theo giai đoạn](docs/showcase/): sơ đồ, trang demo gọi API thật (`pnpm showcase`), và video tiếng Việt ngắn
 
 ## Giấy phép
 

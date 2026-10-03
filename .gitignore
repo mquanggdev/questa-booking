@@ -12,3 +12,7 @@ apps/api/src/generated/
 
 # k6 data written by the seed script (contains tokens)
 load-tests/data/
+
+# Personal study material, kept local only (owner reads, not published)
+docs/learning/
+docs/showcase/

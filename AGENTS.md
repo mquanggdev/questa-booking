@@ -48,8 +48,8 @@ docs/
   spec.md                 # đặc tả
   benchmarks.md
   adr/                    # NNNN-english-slug.md
-  learning/               # phase-NN-english-slug.md
-  showcase/               # diễn giải từng giai đoạn: sơ đồ, demo, video
+  learning/               # phase-NN-english-slug.md (gitignored, chỉ ở máy)
+  showcase/               # sơ đồ, demo, video (gitignored, chỉ ở máy)
     server.mjs            # pnpm showcase: phục vụ demo, chuyển /api sang API
     assets/               # CSS/JS dùng chung cho demo và slide
     tools/make_video.py   # slide HTML → video MP4 tiếng Việt + phụ đề
@@ -80,6 +80,7 @@ Thư mục chỉ được tạo khi cần đến. Tên file và thư mục bằn
 - README: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Việt), cập nhật cả hai trong cùng một commit.
 - Quyết định kỹ thuật đáng kể: một ADR trong `docs/adr/` (bối cảnh, quyết định, phương án đã loại, hệ quả).
 - Cuối mỗi giai đoạn: một ghi chú trong `docs/learning/` gồm đã làm gì, vì sao, lỗi đã gặp, và câu hỏi phỏng vấn có thể gặp.
+- `docs/learning/` và `docs/showcase/` là **tài liệu học riêng của chủ dự án**: nằm trong `.gitignore`, chỉ tồn tại trên máy, không commit. Vẫn phải viết đầy đủ mỗi giai đoạn. Không link tới chúng từ README hay ADR.
 - **Tài liệu text là chính và bắt buộc**: ghi chú học tập, ADR, đặc tả, README. Nó phải đủ để hiểu giai đoạn đó mà không cần xem sơ đồ, demo hay video.
 - Cuối mỗi giai đoạn, **bổ sung** (không thay thế tài liệu text) một thư mục `docs/showcase/phase-NN/` diễn giải những gì đã làm theo 3 cách, chọn cách dễ hiểu nhất cho người mới:
   1. **Sơ đồ** Mermaid trong `README.md` (kiến trúc, luồng, trạng thái, dữ liệu, tùy giai đoạn).

@@ -138,8 +138,8 @@ docs/
   spec.md
   benchmarks.md
   adr/                    # quyết định kiến trúc
-  learning/               # ghi chú học tập sau mỗi giai đoạn
-  showcase/               # sơ đồ, trang demo, video cho từng giai đoạn
+  learning/               # ghi chú học tập (chỉ ở máy chủ dự án, không commit)
+  showcase/               # sơ đồ, demo, video (chỉ ở máy chủ dự án, không commit)
 .claude/skills/           # skill tham khảo cho agent
 AGENTS.md                 # quy tắc cho agent
 docker-compose.yml
@@ -505,6 +505,7 @@ Các giai đoạn làm tuần tự, được gom thành 4 mốc. Hết mỗi m�
 - README tiếng Anh và tiếng Việt được cập nhật phần liên quan, trong cùng một commit.
 - Có tài liệu text: ghi chú học tập trong `docs/learning/`, và ADR cho các quyết định mới. Đây là tài liệu chính.
 - Bổ sung thêm thư mục `docs/showcase/phase-NN/` diễn giải giai đoạn bằng sơ đồ, trang demo gọi API thật, và video tiếng Việt ngắn.
+- `docs/learning/` và `docs/showcase/` là tài liệu học riêng của chủ dự án: nằm trong `.gitignore`, chỉ có trên máy, không đẩy lên GitHub.
 - Từ giai đoạn 2: có dòng benchmark mới.
 - Chủ dự án đã review trước khi gắn tag.
 
