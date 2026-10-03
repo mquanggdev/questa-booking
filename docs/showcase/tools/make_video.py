@@ -125,8 +125,8 @@ def write_subtitles(cues: list[tuple[float, float, str]], vtt: Path, srt: Path) 
     for n, (start, end, text) in enumerate(cues, 1):
         vtt_lines += [f"{timestamp(start, '.')} --> {timestamp(end, '.')}", text, ""]
         srt_lines += [str(n), f"{timestamp(start, ',')} --> {timestamp(end, ',')}", text, ""]
-    vtt.write_text("\n".join(vtt_lines), encoding="utf-8")
-    srt.write_text("\n".join(srt_lines), encoding="utf-8")
+    vtt.write_text("\n".join(vtt_lines), encoding="utf-8", newline="\n")
+    srt.write_text("\n".join(srt_lines), encoding="utf-8", newline="\n")
 
 
 async def build(deck: Path, output: Path, voice: str, rate: str) -> None:
