@@ -38,7 +38,8 @@ Open `docs/spec.md` section 10, find the current phase (named in `AGENTS.md`), a
 - [ ] `README.md` and `README.vi.md` both updated, same structure and numbers.
 - [ ] New ADRs in `docs/adr/` for decisions made in this phase.
 - [ ] Learning note `docs/learning/phase-NN-*.md` for this phase.
-- [ ] Showcase `docs/showcase/phase-NN/`: Mermaid diagrams in `README.md`, a demo page that works against the running API (open it in the browser and click through every section; no console errors), and `video/phase-NN.mp4` built from `video/slides.html`. The phase card in `docs/showcase/index.html` is updated.
+- [ ] The text documentation above stands on its own: a reader understands the phase without the showcase.
+- [ ] Supplementary showcase `docs/showcase/phase-NN/`: Mermaid diagrams in `README.md`, a demo page that works against the running API (open it in the browser and click through every section; no console errors), and `video/phase-NN.mp4` built from `video/slides.html`. The phase card in `docs/showcase/index.html` is updated.
 - [ ] From phase 2 on: new row in `docs/benchmarks.md`.
 - [ ] `.env.example` contains every variable in `apps/api/src/config/env.schema.ts`.
 

@@ -1,6 +1,8 @@
 # Showcase
 
-Mỗi giai đoạn được diễn giải theo 3 cách, cho người mới cũng hiểu được:
+Đây là phần **bổ sung** cho tài liệu text. Tài liệu chính của mỗi giai đoạn vẫn là [ghi chú học tập](../learning/), [ADR](../adr/) và [đặc tả](../spec.md).
+
+Mỗi giai đoạn được diễn giải thêm theo 3 cách, cho người mới cũng hiểu được:
 
 | | Ở đâu | Xem thế nào |
 | --- | --- | --- |
@@ -10,9 +12,9 @@ Mỗi giai đoạn được diễn giải theo 3 cách, cho người mới cũng
 
 ## Các giai đoạn
 
-| Giai đoạn | Sơ đồ | Video |
-| --- | --- | --- |
-| 1. Dữ liệu, xác thực, danh mục | [phase-01/README.md](phase-01/README.md) | [phase-01.mp4](phase-01/video/phase-01.mp4) |
+| Giai đoạn | Tài liệu text (chính) | Sơ đồ | Video |
+| --- | --- | --- | --- |
+| 1. Dữ liệu, xác thực, danh mục | [Ghi chú học tập](../learning/phase-01-data-and-auth.md), [ADR 0004–0006](../adr/) | [phase-01/README.md](phase-01/README.md) | [phase-01.mp4](phase-01/video/phase-01.mp4) |
 
 ## Cách hoạt động
 

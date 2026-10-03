@@ -503,8 +503,8 @@ Các giai đoạn làm tuần tự, được gom thành 4 mốc. Hết mỗi m�
 - Format, lint, typecheck và toàn bộ test đều qua trên CI.
 - Swagger phản ánh đúng các API hiện có.
 - README tiếng Anh và tiếng Việt được cập nhật phần liên quan, trong cùng một commit.
-- Có ghi chú học tập trong `docs/learning/`, và ADR cho các quyết định mới.
-- Có thư mục `docs/showcase/phase-NN/` diễn giải giai đoạn bằng sơ đồ, trang demo gọi API thật, và video tiếng Việt ngắn.
+- Có tài liệu text: ghi chú học tập trong `docs/learning/`, và ADR cho các quyết định mới. Đây là tài liệu chính.
+- Bổ sung thêm thư mục `docs/showcase/phase-NN/` diễn giải giai đoạn bằng sơ đồ, trang demo gọi API thật, và video tiếng Việt ngắn.
 - Từ giai đoạn 2: có dòng benchmark mới.
 - Chủ dự án đã review trước khi gắn tag.
 

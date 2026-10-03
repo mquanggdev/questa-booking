@@ -80,7 +80,8 @@ Thư mục chỉ được tạo khi cần đến. Tên file và thư mục bằn
 - README: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Việt), cập nhật cả hai trong cùng một commit.
 - Quyết định kỹ thuật đáng kể: một ADR trong `docs/adr/` (bối cảnh, quyết định, phương án đã loại, hệ quả).
 - Cuối mỗi giai đoạn: một ghi chú trong `docs/learning/` gồm đã làm gì, vì sao, lỗi đã gặp, và câu hỏi phỏng vấn có thể gặp.
-- Cuối mỗi giai đoạn: một thư mục `docs/showcase/phase-NN/` diễn giải những gì đã làm theo 3 cách, chọn cách dễ hiểu nhất cho người mới:
+- **Tài liệu text là chính và bắt buộc**: ghi chú học tập, ADR, đặc tả, README. Nó phải đủ để hiểu giai đoạn đó mà không cần xem sơ đồ, demo hay video.
+- Cuối mỗi giai đoạn, **bổ sung** (không thay thế tài liệu text) một thư mục `docs/showcase/phase-NN/` diễn giải những gì đã làm theo 3 cách, chọn cách dễ hiểu nhất cho người mới:
   1. **Sơ đồ** Mermaid trong `README.md` (kiến trúc, luồng, trạng thái, dữ liệu, tùy giai đoạn).
   2. **Trang demo** gọi API thật, có nhật ký request; kịch bản trình duyệt không tự làm được thì đặt trong `scenarios.mjs`.
   3. **Video tiếng Việt** ngắn (2–4 phút): viết `video/slides.html` với lời thoại trong `data-narration`, rồi chạy `pnpm showcase:video docs/showcase/phase-NN/video/slides.html`.
