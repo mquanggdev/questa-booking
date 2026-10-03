@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Giai đoạn 1 — Questa Booking</title>
+  <link rel="stylesheet" href="/assets/showcase.css" />
+</head>
+<body>
+  <header class="hero">
+    <div class="crumbs"><a href="/">Showcase</a> / Giai đoạn 1</div>
+    <h1>Giai đoạn 1 — Dữ liệu, xác thực, danh mục</h1>
+    <p>Mọi nút bấm trên trang này gọi API thật. Bảng bên phải ghi lại từng request; bấm vào một dòng để xem chi tiết.</p>
+    <p id="health" style="margin-top:10px"></p>
+  </header>
+
+  <div class="layout">
+    <main>
+      <section class="card">
+        <h2>Video giải thích</h2>
+        <p class="lead">Khoảng 4 phút, tiếng Việt, có phụ đề: giai đoạn này làm gì và vì sao.</p>
+        <video src="./video/phase-01.mp4" controls preload="metadata">
+          <track kind="subtitles" src="./video/phase-01.vtt" srclang="vi" label="Tiếng Việt" default />
+        </video>
+      </section>
+
+      <section class="card">
+        <h2>Sơ đồ</h2>
+        <p class="lead">Vẽ từ <code>docs/showcase/phase-01/README.md</code>; trên GitHub, file đó hiển thị đúng các sơ đồ này.</p>
+        <div id="diagrams"><span class="pill">Đang vẽ sơ đồ…</span></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">1</span>Đăng nhập theo vai trò</h2>
+        <p class="lead">Đăng nhập bằng tài khoản seed. API trả access token trong body; refresh token nằm trong cookie <code>httpOnly</code>, nên JavaScript của trang này không đọc được.</p>
+        <div class="row">
+          <button data-login="organizer@questa.test">Ban tổ chức</button>
+          <button data-login="customer0001@questa.test">Khách hàng</button>
+          <button data-login="staff@questa.test">Soát vé</button>
+          <button class="danger" id="login-wrong">Sai mật khẩu</button>
+          <button class="danger" id="login-unknown">Email không tồn tại</button>
+        </div>
+        <div id="login-out"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">2</span>Refresh token xoay vòng</h2>
+        <p class="lead">Mỗi lần refresh, token cũ bị thu hồi và token mới được cấp. Hai kịch bản bên dưới chạy trên server demo, vì trình duyệt không tự gửi lại được cookie cũ.</p>
+        <div class="row">
+          <button id="refresh">Refresh (trình duyệt tự gửi cookie)</button>
+          <button class="secondary" data-scenario="refresh-reuse">Kịch bản: token bị đánh cắp</button>
+          <button class="secondary" data-scenario="concurrent-refresh">Kịch bản: 2 refresh cùng lúc</button>
+          <button class="danger" id="logout">Đăng xuất</button>
+        </div>
+        <div id="refresh-out"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">3</span>Danh mục và sơ đồ ghế</h2>
+        <p class="lead">Không cần đăng nhập. Chọn một đêm diễn để vẽ toàn bộ ghế từ <code>GET /performances/:id/seats</code>.</p>
+        <div class="row">
+          <button id="load-concerts">Tải danh sách concert</button>
+          <select id="performance-select" disabled><option>Chưa tải</option></select>
+          <button class="secondary" id="load-seats" disabled>Vẽ sơ đồ ghế</button>
+        </div>
+        <div id="seat-summary"></div>
+        <div class="legend" id="seat-legend"></div>
+        <canvas id="seat-canvas" width="960" height="40"></canvas>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">4</span>Ban tổ chức tạo và công bố đêm diễn</h2>
+        <p class="lead">Hãy đăng nhập bằng <b>Ban tổ chức</b> ở bước 1. Đêm diễn mới ở trạng thái DRAFT nên khách chưa thấy; sau khi công bố thì ai cũng thấy.</p>
+        <div class="row">
+          <button id="create-concert">a. Tạo concert</button>
+          <button id="create-performance" disabled>b. Tạo đêm diễn (DRAFT)</button>
+          <button class="secondary" id="anon-view" disabled>c. Khách xem thử (không token)</button>
+          <button id="publish" disabled>d. Công bố</button>
+          <button class="secondary" id="anon-view-2" disabled>e. Khách xem lại</button>
+          <button class="danger" id="publish-again" disabled>f. Công bố lần nữa</button>
+        </div>
+        <details>
+          <summary>Body tạo đêm diễn (sửa được)</summary>
+          <textarea id="performance-body"></textarea>
+        </details>
+        <div id="organizer-out"></div>
+      </section>
+
+      <section class="card">
+        <h2><span class="step">5</span>Một định dạng lỗi cho mọi trường hợp</h2>
+        <p class="lead">Lỗi nào cũng có dạng <code>{ code, message, details }</code>. Client rẽ nhánh theo <code>code</code>, không dựa vào câu chữ.</p>
+        <div class="row">
+          <button class="danger" data-error="validation">400: body sai</button>
+          <button class="danger" data-error="extra-field">400: tự gán role</button>
+          <button class="danger" data-error="no-token">401: thiếu token</button>
+          <button class="danger" data-error="forbidden">403: khách tạo concert</button>
+          <button class="danger" data-error="not-found">404: không tồn tại</button>
+          <button class="danger" data-error="bad-uuid">400: id sai định dạng</button>
+        </div>
+        <div id="error-out"></div>
+      </section>
+    </main>
+
+    <aside>
+      <div class="card log">
+        <h2>Nhật ký request</h2>
+        <p class="lead">Mới nhất ở trên. Bấm để xem body.</p>
+        <ul class="log-list" id="log-list"></ul>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="./demo.js"></script>
+</body>
+</html>

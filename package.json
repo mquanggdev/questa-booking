@@ -14,6 +14,8 @@
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
     "test:e2e": "pnpm -r run test:e2e",
-    "build": "pnpm -r run build"
+    "build": "pnpm -r run build",
+    "showcase": "node docs/showcase/server.mjs",
+    "showcase:video": "uv run --with edge-tts --with imageio-ffmpeg --with playwright python docs/showcase/tools/make_video.py"
   }
 }

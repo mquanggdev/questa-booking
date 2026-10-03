@@ -139,6 +139,7 @@ docs/
   benchmarks.md
   adr/                    # quyết định kiến trúc
   learning/               # ghi chú học tập sau mỗi giai đoạn
+  showcase/               # sơ đồ, trang demo, video cho từng giai đoạn
 .claude/skills/           # skill tham khảo cho agent
 AGENTS.md                 # quy tắc cho agent
 docker-compose.yml
@@ -503,6 +504,7 @@ Các giai đoạn làm tuần tự, được gom thành 4 mốc. Hết mỗi m�
 - Swagger phản ánh đúng các API hiện có.
 - README tiếng Anh và tiếng Việt được cập nhật phần liên quan, trong cùng một commit.
 - Có ghi chú học tập trong `docs/learning/`, và ADR cho các quyết định mới.
+- Có thư mục `docs/showcase/phase-NN/` diễn giải giai đoạn bằng sơ đồ, trang demo gọi API thật, và video tiếng Việt ngắn.
 - Từ giai đoạn 2: có dòng benchmark mới.
 - Chủ dự án đã review trước khi gắn tag.
 

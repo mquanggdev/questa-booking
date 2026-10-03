@@ -61,6 +61,7 @@ Starts at phase 2 with the naive, double-selling version. See [`docs/benchmarks.
 - [Specification](docs/spec.md) (Vietnamese)
 - [Architecture decision records](docs/adr/) (Vietnamese)
 - [Learning notes per phase](docs/learning/) (Vietnamese)
+- [Showcase per phase](docs/showcase/): diagrams, a live demo page (`pnpm showcase`), and a short narrated video (Vietnamese)
 
 ## License
 

@@ -1,0 +1,148 @@
+WEBVTT
+
+00:00:00.400 --> 00:00:01.043
+Xin chào.
+
+00:00:01.043 --> 00:00:08.330
+Đây là video tóm tắt giai đoạn một của dự án Questa Booking, một hệ thống bán vé concert chịu tải cao.
+
+00:00:08.330 --> 00:00:15.260
+Ở giai đoạn này, mình dựng phần nền cho mọi thứ phía sau: dữ liệu, đăng nhập và danh mục concert.
+
+00:00:16.560 --> 00:00:18.744
+Giai đoạn một gồm bốn phần.
+
+00:00:18.744 --> 00:00:21.575
+Một, mô hình dữ liệu với chín bảng.
+
+00:00:21.575 --> 00:00:27.803
+Hai, đăng nhập an toàn bằng access token ngắn hạn và refresh token xoay vòng.
+
+00:00:27.803 --> 00:00:33.950
+Ba, phân quyền cho ba vai trò: khách hàng, ban tổ chức và nhân viên soát vé.
+
+00:00:33.950 --> 00:00:39.450
+Bốn, các API để ban tổ chức tạo đêm diễn, và để khách xem sơ đồ ghế.
+
+00:00:39.450 --> 00:00:41.795
+Chức năng đặt vé thì chưa có.
+
+00:00:41.795 --> 00:00:44.060
+Nó bắt đầu từ giai đoạn hai.
+
+00:00:45.360 --> 00:00:46.987
+Đây là mô hình dữ liệu.
+
+00:00:46.987 --> 00:00:49.110
+Một concert có nhiều đêm diễn.
+
+00:00:49.110 --> 00:00:53.426
+Mỗi đêm diễn được chia thành các khu, ví dụ VIP hay khu đứng.
+
+00:00:53.426 --> 00:00:57.954
+Khu ngồi chứa từng ghế có số, còn khu đứng chỉ cần đếm số lượng.
+
+00:00:57.954 --> 00:01:04.109
+Bảng đơn hàng và bảng từng vé trong đơn đã có sẵn, nhưng sẽ được dùng từ giai đoạn hai.
+
+00:01:04.109 --> 00:01:10.477
+Khóa chính là UUID phiên bản bảy, có thứ tự theo thời gian nên chèn vào chỉ mục rất nhanh.
+
+00:01:10.477 --> 00:01:15.500
+Tiền được lưu bằng số nguyên đồng, để không bao giờ bị sai số làm tròn.
+
+00:01:16.800 --> 00:01:19.618
+Mỗi request đi qua cùng một dây chuyền.
+
+00:01:19.618 --> 00:01:23.015
+Đầu tiên, guard xác thực kiểm tra access token.
+
+00:01:23.015 --> 00:01:28.579
+Mặc định mọi đường dẫn đều cần đăng nhập, trừ khi được đánh dấu là công khai.
+
+00:01:28.579 --> 00:01:31.470
+Tiếp theo, guard vai trò kiểm tra quyền.
+
+00:01:31.470 --> 00:01:35.010
+Sau đó dữ liệu gửi lên được kiểm tra từng trường.
+
+00:01:35.010 --> 00:01:42.020
+Dù lỗi xảy ra ở bước nào, client cũng nhận về cùng một định dạng: mã lỗi, thông báo, và chi tiết.
+
+00:01:43.320 --> 00:01:45.848
+Khi đăng nhập, API trả về hai thứ.
+
+00:01:45.848 --> 00:01:51.647
+Access token là JWT, chỉ sống mười lăm phút, và trang web giữ nó trong bộ nhớ.
+
+00:01:51.647 --> 00:01:58.860
+Refresh token sống bảy ngày và được đặt trong cookie httpOnly, nên JavaScript không thể đọc được.
+
+00:01:58.860 --> 00:02:06.964
+Nếu trang web dính lỗi XSS, kẻ tấn công chỉ lấy được access token ngắn hạn, chứ không lấy được refresh token.
+
+00:02:06.964 --> 00:02:12.020
+Trong database, refresh token chỉ được lưu dưới dạng mã băm SHA 256.
+
+00:02:13.320 --> 00:02:16.227
+Mỗi refresh token chỉ dùng được một lần.
+
+00:02:16.227 --> 00:02:20.806
+Mỗi lần refresh, token cũ bị thu hồi và một token mới được cấp.
+
+00:02:20.806 --> 00:02:24.658
+Giả sử kẻ trộm sao chép được token cũ và đem ra dùng.
+
+00:02:24.658 --> 00:02:31.272
+Hệ thống nhận ra một token đã bị thu hồi lại được gửi lên, nên thu hồi luôn cả họ token đó.
+
+00:02:31.272 --> 00:02:36.360
+Kẻ trộm mất quyền truy cập, còn người dùng thật chỉ cần đăng nhập lại.
+
+00:02:37.660 --> 00:02:43.001
+Câu hỏi khó là: nếu hai request refresh với cùng một token đến cùng lúc thì sao?
+
+00:02:43.001 --> 00:02:48.142
+Nếu viết theo kiểu đọc trước rồi ghi sau, cả hai đều thấy token còn hiệu lực.
+
+00:02:48.142 --> 00:02:50.679
+Mình dùng một câu UPDATE có điều kiện.
+
+00:02:50.679 --> 00:02:56.287
+PostgreSQL khóa dòng đó, nên request đến sau thấy token đã bị thu hồi và không khớp.
+
+00:02:56.287 --> 00:03:00.026
+Có test tự động chứng minh: đúng một request thành công.
+
+00:03:00.026 --> 00:03:04.900
+Đây cũng chính là kỹ thuật sẽ dùng để chống bán trùng ghế ở giai đoạn ba.
+
+00:03:06.200 --> 00:03:15.547
+Với danh mục, ban tổ chức tạo một đêm diễn kèm các khu, đợt mở bán và hàng nghìn ghế, tất cả trong một transaction: hoặc thành công hết, hoặc không ghi gì.
+
+00:03:15.547 --> 00:03:19.888
+Đêm diễn mới ở trạng thái nháp, nên người ngoài nhận lỗi không tìm thấy.
+
+00:03:19.888 --> 00:03:28.210
+Khi công bố, trạng thái chuyển sang published bằng một câu UPDATE có điều kiện, nên nếu bấm công bố hai lần thì lần sau nhận lỗi xung đột.
+
+00:03:29.510 --> 00:03:37.497
+Về kiểm thử: mười hai unit test và hai mươi chín e2e test, chạy trên một database riêng để không xóa mất dữ liệu dùng thử.
+
+00:03:37.497 --> 00:03:44.961
+Script seed tạo năm nghìn tài khoản và mười sáu nghìn ghế trong khoảng bốn giây rưỡi, kèm sẵn token cho load test.
+
+00:03:44.961 --> 00:03:48.234
+Sơ đồ tám nghìn ghế hiện nặng khoảng một megabyte.
+
+00:03:48.234 --> 00:03:50.460
+Mình sẽ tối ưu nó ở giai đoạn bảy.
+
+00:03:51.760 --> 00:04:03.214
+Giai đoạn tiếp theo, mình sẽ cố ý viết chức năng đặt vé theo cách ngây thơ nhất, rồi dùng k6 cho hàng nghìn người ảo cùng tranh một trăm ghế, để đo xem có bao nhiêu ghế bị bán trùng.
+
+00:04:03.214 --> 00:04:06.613
+Con số đó là điểm xuất phát cho mọi cải tiến phía sau.
+
+00:04:06.613 --> 00:04:08.060
+Cảm ơn bạn đã theo dõi.

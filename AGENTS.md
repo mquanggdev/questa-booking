@@ -49,6 +49,15 @@ docs/
   benchmarks.md
   adr/                    # NNNN-english-slug.md
   learning/               # phase-NN-english-slug.md
+  showcase/               # diễn giải từng giai đoạn: sơ đồ, demo, video
+    server.mjs            # pnpm showcase: phục vụ demo, chuyển /api sang API
+    assets/               # CSS/JS dùng chung cho demo và slide
+    tools/make_video.py   # slide HTML → video MP4 tiếng Việt + phụ đề
+    phase-NN/
+      README.md           # sơ đồ Mermaid (nguồn duy nhất của sơ đồ)
+      index.html, demo.js # trang demo gọi API thật
+      scenarios.mjs       # kịch bản nhiều bước chạy phía server (nếu cần)
+      video/slides.html   # slide + lời thoại; video/phase-NN.mp4, .vtt, .srt
 ```
 
 Thư mục chỉ được tạo khi cần đến. Tên file và thư mục bằng tiếng Anh, kebab-case.
@@ -71,6 +80,11 @@ Thư mục chỉ được tạo khi cần đến. Tên file và thư mục bằn
 - README: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Việt), cập nhật cả hai trong cùng một commit.
 - Quyết định kỹ thuật đáng kể: một ADR trong `docs/adr/` (bối cảnh, quyết định, phương án đã loại, hệ quả).
 - Cuối mỗi giai đoạn: một ghi chú trong `docs/learning/` gồm đã làm gì, vì sao, lỗi đã gặp, và câu hỏi phỏng vấn có thể gặp.
+- Cuối mỗi giai đoạn: một thư mục `docs/showcase/phase-NN/` diễn giải những gì đã làm theo 3 cách, chọn cách dễ hiểu nhất cho người mới:
+  1. **Sơ đồ** Mermaid trong `README.md` (kiến trúc, luồng, trạng thái, dữ liệu, tùy giai đoạn).
+  2. **Trang demo** gọi API thật, có nhật ký request; kịch bản trình duyệt không tự làm được thì đặt trong `scenarios.mjs`.
+  3. **Video tiếng Việt** ngắn (2–4 phút): viết `video/slides.html` với lời thoại trong `data-narration`, rồi chạy `pnpm showcase:video docs/showcase/phase-NN/video/slides.html`.
+  Cập nhật thẻ giai đoạn trong `docs/showcase/index.html`. Kiểm tra trang demo trong trình duyệt trước khi báo cáo.
 
 ## Lệnh
 
@@ -84,6 +98,8 @@ Chạy từ thư mục gốc repo:
 | `pnpm test` | Unit test (không cần DB) |
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
+| `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
+| `pnpm showcase:video <slides.html>` | Dựng video tiếng Việt từ slide (qua `uv`, không cài gì lên hệ thống) |
 | `pnpm --filter @questa/api db:seed` | Xóa sạch DB dev rồi nạp dữ liệu mẫu, ghi token cho k6 vào `load-tests/data/` |
 
 Cổng trên máy chủ dự án:

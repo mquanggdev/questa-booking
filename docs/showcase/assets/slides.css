@@ -1,0 +1,43 @@
+/* 1280x720 slide decks rendered to video by tools/make_video.py */
+:root {
+  --ink: #111827;
+  --muted: #4b5563;
+  --brand: #4f46e5;
+  --brand-2: #0ea5e9;
+  --ok: #15803d;
+  --err: #b91c1c;
+  --paper: #ffffff;
+  --soft: #f3f4fb;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: #e5e7eb; }
+.slide { width: 1280px; height: 720px; background: var(--paper); position: relative; overflow: hidden; padding: 56px 72px 48px; display: none; flex-direction: column; }
+.slide.active { display: flex; }
+body.preview .slide { display: flex; margin: 16px auto; box-shadow: 0 4px 20px rgba(0,0,0,.12); }
+.slide::after { content: attr(data-footer); position: absolute; left: 72px; right: 72px; bottom: 18px; font-size: 15px; color: #9ca3af; border-top: 1px solid #eef0f4; padding-top: 10px; }
+.slide h1 { font-size: 54px; margin: 0 0 14px; line-height: 1.15; }
+.slide h2 { font-size: 40px; margin: 0 0 22px; color: var(--brand); }
+.slide p, .slide li { font-size: 27px; line-height: 1.45; color: var(--muted); }
+.slide ul { margin: 0; padding-left: 30px; }
+.slide li { margin-bottom: 12px; }
+.slide b { color: var(--ink); }
+.title { justify-content: center; background: linear-gradient(135deg, #eef2ff 0%, #e0f2fe 100%); }
+.kicker { font-size: 22px; letter-spacing: .12em; text-transform: uppercase; color: var(--brand); margin-bottom: 18px; font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; flex: 1; }
+.grid4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 22px; }
+.box { background: var(--soft); border-radius: 18px; padding: 22px 26px; }
+.box h3 { margin: 0 0 8px; font-size: 28px; color: var(--ink); }
+.box p { margin: 0; font-size: 22px; }
+.num { display: inline-flex; width: 44px; height: 44px; border-radius: 50%; background: var(--brand); color: #fff; align-items: center; justify-content: center; font-size: 24px; margin-right: 10px; vertical-align: middle; }
+pre.sql { font-family: 'Cascadia Code', Consolas, monospace; font-size: 25px; background: #0f172a; color: #e2e8f0; border-radius: 14px; padding: 22px 26px; margin: 0; line-height: 1.5; }
+pre.sql .k { color: #93c5fd; }
+pre.sql .c { color: #86efac; }
+.diagram { flex: 1; display: flex; align-items: center; justify-content: center; }
+.diagram svg { width: 100% !important; max-width: 100% !important; height: 500px; }
+.stat { font-size: 64px; font-weight: 700; color: var(--brand); line-height: 1.1; }
+.stat-label { font-size: 22px; color: var(--muted); }
+.tag { display: inline-block; padding: 4px 14px; border-radius: 999px; background: #eef2ff; color: var(--brand); font-size: 20px; margin-right: 8px; }
+.tag.ok { background: #dcfce7; color: var(--ok); }
+.tag.err { background: #fee2e2; color: var(--err); }
