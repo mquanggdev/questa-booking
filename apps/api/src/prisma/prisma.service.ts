@@ -10,7 +10,14 @@ export class PrismaService
 {
   constructor(config: AppConfigService) {
     super({
-      adapter: new PrismaPg({ connectionString: config.get('DATABASE_URL') }),
+      adapter: new PrismaPg({
+        connectionString: config.get('DATABASE_URL'),
+        max: config.get('DB_POOL_MAX'),
+      }),
+      transactionOptions: {
+        maxWait: config.get('DB_TX_MAX_WAIT_MS'),
+        timeout: config.get('DB_TX_TIMEOUT_MS'),
+      },
     });
   }
 

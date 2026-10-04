@@ -27,15 +27,27 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const res = host.switchToHttp().getResponse<Response>();
-    const { status, body } = this.toResponse(exception);
+    const { status, body, retryAfter } = this.toResponse(exception);
 
-    if (status >= 500) {
+    if (status === HttpStatus.SERVICE_UNAVAILABLE) {
+      // Expected under overload; one line, not a stack trace per request.
+      const cause =
+        exception instanceof Error ? exception.message : body.message;
+      this.logger.warn(`503: ${cause.slice(0, 200)}`);
+    } else if (status >= 500) {
       this.logger.error(exception);
+    }
+    if (retryAfter !== undefined) {
+      res.setHeader('Retry-After', String(retryAfter));
     }
     res.status(status).json(body);
   }
 
-  private toResponse(exception: unknown): { status: number; body: ErrorBody } {
+  private toResponse(exception: unknown): {
+    status: number;
+    body: ErrorBody;
+    retryAfter?: number;
+  } {
     if (exception instanceof HttpException) {
       return {
         status: exception.getStatus(),
@@ -53,6 +65,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
             code: ErrorCode.CONFLICT,
             message: 'Resource already exists',
           },
+        };
+      }
+      // Transaction API error, e.g. no free connection within maxWait. The
+      // server is overloaded, not broken: tell the client to retry later.
+      if (exception.code === 'P2028') {
+        return {
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          body: {
+            code: ErrorCode.SERVICE_UNAVAILABLE,
+            message: 'Server is busy, please retry shortly',
+          },
+          retryAfter: 1,
         };
       }
       if (exception.code === 'P2025') {

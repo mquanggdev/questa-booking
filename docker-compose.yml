@@ -11,6 +11,10 @@ x-api-env: &api-env
   REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-7}
   COOKIE_SECURE: ${COOKIE_SECURE:-false}
   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+  HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-600}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  DB_TX_MAX_WAIT_MS: ${DB_TX_MAX_WAIT_MS:-2000}
+  DB_TX_TIMEOUT_MS: ${DB_TX_TIMEOUT_MS:-10000}
 
 services:
   postgres:
@@ -80,6 +84,20 @@ services:
       timeout: 3s
       retries: 5
     mem_limit: 512m
+
+  # Load generator, only with `--profile loadtest` (see load-tests/run.mjs).
+  # Runs inside the compose network and calls the API directly, not through
+  # the host port, so Windows/macOS port forwarding does not skew results.
+  k6:
+    image: grafana/k6:2.3.0
+    profiles: ['loadtest']
+    environment:
+      BASE_URL: http://api:3000
+    volumes:
+      - ./load-tests:/load-tests
+    depends_on:
+      api:
+        condition: service_healthy
 
 volumes:
   pgdata:
