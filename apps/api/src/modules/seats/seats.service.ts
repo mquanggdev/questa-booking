@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { AppException } from '../../common/errors/app.exception.js';
+import { ErrorCode } from '../../common/errors/error-codes.js';
 import { type Prisma, type SeatStatus } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { rowLabel } from './row-label.js';
@@ -73,6 +75,50 @@ export class SeatsService {
       number: s.seatNumber,
       status: s.status,
     }));
+  }
+
+  /**
+   * PHASE 2 BASELINE: DELIBERATELY NAIVE. Do not copy.
+   *
+   * Check-then-act: read the seats, see they are AVAILABLE, then mark them
+   * HELD with an UPDATE that does not re-check the status. Between the read
+   * and the write another request can read the same seats as AVAILABLE too,
+   * and both "win". Running inside a transaction does not help: at READ
+   * COMMITTED, plain reads take no locks. Phase 3 fixes this.
+   */
+  async holdNaive(
+    tx: Prisma.TransactionClient,
+    performanceId: string,
+    seatIds: string[],
+  ): Promise<{ id: string; zoneId: string }[]> {
+    const seats = await tx.seat.findMany({
+      where: { id: { in: seatIds }, performanceId },
+      select: { id: true, zoneId: true, status: true },
+    });
+    if (seats.length !== seatIds.length) {
+      const found = new Set(seats.map((s) => s.id));
+      throw new AppException(
+        HttpStatus.BAD_REQUEST,
+        ErrorCode.INVALID_TICKET_SELECTION,
+        'Some seats do not belong to this performance',
+        { seatIds: seatIds.filter((id) => !found.has(id)) },
+      );
+    }
+    const taken = seats.filter((s) => s.status !== 'AVAILABLE');
+    if (taken.length > 0) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        ErrorCode.SEAT_UNAVAILABLE,
+        'Some seats are no longer available',
+        { seatIds: taken.map((s) => s.id) },
+      );
+    }
+    // No "AND status = 'AVAILABLE'" here: that missing condition is the bug.
+    await tx.seat.updateMany({
+      where: { id: { in: seatIds } },
+      data: { status: 'HELD' },
+    });
+    return seats.map((s) => ({ id: s.id, zoneId: s.zoneId }));
   }
 
   /** AVAILABLE seat count per zone. */

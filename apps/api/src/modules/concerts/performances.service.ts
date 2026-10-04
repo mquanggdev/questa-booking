@@ -14,6 +14,12 @@ import type {
 } from './dto/performance.dto.js';
 import { validatePerformanceRules } from './performance-rules.js';
 
+export interface OnSalePerformance {
+  id: string;
+  maxTicketsPerUser: number;
+  zones: { id: string; type: ZoneType; price: number }[];
+}
+
 const detailInclude = {
   concert: {
     select: { id: true, name: true, artist: true, organizerId: true },
@@ -35,6 +41,45 @@ export class PerformancesService {
     private readonly concerts: ConcertsService,
     private readonly seats: SeatsService,
   ) {}
+
+  /**
+   * What a reservation needs to know: zones with prices, and the ticket
+   * limit. Throws unless the performance is published and a GENERAL sale
+   * phase is open right now (presale codes arrive in phase 7b).
+   */
+  async getOnSale(
+    id: string,
+    now: Date = new Date(),
+  ): Promise<OnSalePerformance> {
+    const performance = await this.prisma.performance.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        maxTicketsPerUser: true,
+        zones: { select: { id: true, type: true, price: true } },
+        salePhases: { select: { type: true, startsAt: true, endsAt: true } },
+      },
+    });
+    if (!performance || performance.status === 'DRAFT') {
+      throw performanceNotFound();
+    }
+    const open = performance.salePhases.some(
+      (p) => p.type === 'GENERAL' && p.startsAt <= now && now < p.endsAt,
+    );
+    if (performance.status !== 'PUBLISHED' || !open) {
+      throw new AppException(
+        HttpStatus.CONFLICT,
+        ErrorCode.SALE_NOT_OPEN,
+        'Tickets for this performance are not on sale right now',
+      );
+    }
+    return {
+      id: performance.id,
+      maxTicketsPerUser: performance.maxTicketsPerUser,
+      zones: performance.zones,
+    };
+  }
 
   /** Creates a DRAFT performance with its zones, seats and sale phases, atomically. */
   async create(
