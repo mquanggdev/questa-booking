@@ -4,7 +4,7 @@
 
 A concert ticketing backend built to sell exactly the seats that exist when thousands of people buy at the same moment, and to prove it with numbers.
 
-> **Status:** Phase 1 done: data model, authentication with rotating refresh tokens, roles, concert and performance catalog, seed data. Booking starts in phase 2. See [the roadmap](docs/spec.md#10-lộ-trình-triển-khai).
+> **Status:** Phase 2 done: a deliberately naive booking endpoint and the first load-test baseline. It double-sells, on purpose. Phase 3 fixes it.
 
 ## The problem
 
@@ -54,7 +54,18 @@ pnpm --filter @questa/api start:dev
 
 ## Benchmarks
 
-Starts at phase 2 with the naive, double-selling version. See [`docs/benchmarks.md`](docs/benchmarks.md).
+Every number comes from `pnpm loadtest <scenario>`: k6 inside the compose network, then SQL checks straight against PostgreSQL. Full table: [`docs/benchmarks.md`](docs/benchmarks.md).
+
+| Phase | Scenario | Result |
+| --- | --- | --- |
+| 2: naive "read, check, write" | 5,000 buyers, 100 seats | **4–11 seats sold twice** in every run |
+| 2: naive | 5,000 buyers, 500 standing tickets | **925 tickets issued** for 500 places; the counter recorded 94 (831 lost updates) |
+| 2: naive | catalog reads, one API process | 100 req/s at p95 41 ms; saturates (CPU-bound) before 200 req/s |
+
+```bash
+pnpm --filter @questa/api db:seed
+pnpm loadtest contention      # or: standing, browse
+```
 
 ## Documentation
 

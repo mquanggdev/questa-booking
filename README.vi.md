@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 1: mô hình dữ liệu, xác thực với refresh token xoay vòng, phân quyền, danh mục concert và đêm diễn, dữ liệu mẫu. Đặt vé bắt đầu từ giai đoạn 2. Xem [lộ trình](docs/spec.md#10-lộ-trình-triển-khai).
+> **Trạng thái:** Xong giai đoạn 2: endpoint đặt vé cố ý viết ngây thơ và baseline load test đầu tiên. Nó bán trùng, có chủ đích. Giai đoạn 3 sửa lỗi này.
 
 ## Bài toán
 
@@ -56,7 +56,18 @@ pnpm --filter @questa/api start:dev
 
 ## Benchmark
 
-Bắt đầu từ giai đoạn 2, với phiên bản ngây thơ còn bán trùng. Xem [`docs/benchmarks.md`](docs/benchmarks.md).
+Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạng docker compose, sau đó kiểm tra bằng SQL thẳng vào PostgreSQL. Bảng đầy đủ: [`docs/benchmarks.md`](docs/benchmarks.md).
+
+| Giai đoạn | Kịch bản | Kết quả |
+| --- | --- | --- |
+| 2: ngây thơ "đọc, kiểm tra, ghi" | 5.000 khách, 100 ghế | **4–11 ghế bị bán hai lần**, ở mọi lần chạy |
+| 2: ngây thơ | 5.000 khách, 500 vé đứng | **Phát 925 vé** cho 500 chỗ; bộ đếm chỉ ghi 94 (mất 831 lần cập nhật) |
+| 2: ngây thơ | đọc danh mục, một tiến trình API | 100 req/s với p95 41 ms; bão hòa (hết CPU) trước 200 req/s |
+
+```bash
+pnpm --filter @questa/api db:seed
+pnpm loadtest contention      # hoặc: standing, browse
+```
 
 ## Tài liệu
 

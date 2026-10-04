@@ -462,8 +462,8 @@ Laptop: AMD Ryzen 5 4600H (6 nhân, 12 luồng), 16 GB RAM, Windows 11, Docker D
 
 | Kịch bản | Mô tả | Chứng minh điều gì |
 | --- | --- | --- |
-| `contention` | 5.000 người dùng ảo cùng tranh 100 ghế | Không bán trùng (I1) |
-| `standing` | 5.000 người dùng ảo cùng tranh 500 vé khu đứng | Không bán quá sức chứa (I9) |
+| `contention` | 5.000 khách (1.000 VU × 5 lượt) cùng tranh 100 ghế | Không bán trùng (I1) |
+| `standing` | 5.000 khách (1.000 VU × 5 lượt) cùng tranh 500 vé khu đứng | Không bán quá sức chứa (I9) |
 | `quota` | Một tài khoản gửi nhiều request giữ vé song song | Không vượt giới hạn mua (I10) |
 | `browse` | Đọc danh sách và chi tiết đêm diễn | Hiệu quả của cache |
 | `full-flow` | Giữ vé, thanh toán giả lập, nhận vé | Luồng đầy đủ, I2, I7 |
@@ -472,6 +472,10 @@ Laptop: AMD Ryzen 5 4600H (6 nhân, 12 luồng), 16 GB RAM, Windows 11, Docker D
 | `on-sale` | Tải tăng vọt lúc mở bán trên đêm diễn 10.000 vé | Thông lượng, độ trễ, hàng chờ ảo |
 
 Token đăng nhập cho người dùng ảo được tạo sẵn bằng script seed, để phần setup của k6 không phải băm mật khẩu 5.000 lần.
+
+Mọi lần đo chạy qua `pnpm loadtest <kịch bản>`: reset dữ liệu, chạy k6 trong mạng docker compose, kiểm tra bất biến bằng SQL, rồi (với `--record`) thêm một dòng vào `docs/benchmarks.md`. Lý do chọn 1.000 VU × 5 lượt thay vì 5.000 VU: [ADR-0007](adr/0007-load-testing-and-overload.md).
+
+Khi quá tải (pool kết nối DB dùng hết), API trả `503` kèm `Retry-After`, không trả `500`.
 
 Payment provider giả lập có cùng interface với VNPay, bật bằng biến môi trường và chỉ dùng ngoài production.
 
@@ -534,7 +538,8 @@ Hoàn thành khi: e2e test cho auth và danh mục qua, seed chạy dưới 1 ph
 - `POST /reservations` viết theo cách đơn giản nhất, không khóa, không ràng buộc. Ghế ngồi: đọc ghế, thấy trống thì cập nhật và tạo đơn. Vé đứng: đọc số vé còn lại, thấy đủ thì cộng bộ đếm.
 - Kịch bản k6 `contention`, `standing` và `browse`.
 - Script kiểm tra I1 và I9 trong `load-tests/verify/`.
-- Skill `/benchmark` chạy k6, chạy script kiểm tra và thêm dòng vào `docs/benchmarks.md`.
+- `pnpm loadtest` và skill `/benchmark`: chạy k6, chạy script kiểm tra và thêm dòng vào `docs/benchmarks.md`.
+- `GET /orders`, `GET /orders/:id` để khách xem đơn của mình.
 
 Hoàn thành khi: load test cho thấy có ghế bị bán trùng và con số được ghi lại. Nếu không tái hiện được lỗi, tăng số người dùng ảo cho đến khi thấy. Gắn tag `v0-naive` trước khi sửa lỗi này.
 
