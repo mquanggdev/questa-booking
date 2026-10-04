@@ -1,0 +1,151 @@
+#!/usr/bin/env node
+// Runs one load-test scenario end to end and reports the result.
+//
+//   pnpm loadtest contention
+//   pnpm loadtest standing --vus 1000 --iters 5
+//   pnpm loadtest browse --rate 300 --duration 30s
+//   pnpm loadtest contention --record "phase 2 naive"   (appends to docs/benchmarks.md)
+//
+// Steps: reset the target performance (write scenarios) -> k6 in Docker ->
+// invariant SQL -> printed report (+ optional benchmark row).
+// Needs: docker compose up, and `pnpm --filter @questa/api db:seed` once.
+import { spawnSync } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = fileURLToPath(new URL('.', import.meta.url));
+const repo = resolve(here, '..');
+try {
+  process.loadEnvFile(resolve(repo, '.env'));
+} catch {
+  // defaults below
+}
+
+const WRITE_SCENARIOS = new Set(['contention', 'standing']);
+const SCENARIOS = new Set([...WRITE_SCENARIOS, 'browse']);
+
+function parseArgs(argv) {
+  const [scenario, ...rest] = argv;
+  const opts = { scenario };
+  for (let i = 0; i < rest.length; i += 2) {
+    opts[rest[i].replace(/^--/, '')] = rest[i + 1];
+  }
+  return opts;
+}
+
+function sh(args, { input, quiet = false } = {}) {
+  const result = spawnSync(args[0], args.slice(1), {
+    cwd: repo,
+    input,
+    encoding: 'utf8',
+    stdio: [input === undefined ? 'inherit' : 'pipe', quiet ? 'pipe' : 'inherit', 'pipe'],
+  });
+  if (result.status !== 0) {
+    throw new Error(`${args.join(' ')} failed:\n${result.stderr}`);
+  }
+  return result.stdout ?? '';
+}
+
+function psql(file, perf) {
+  const user = process.env.POSTGRES_USER ?? 'questa';
+  const db = process.env.POSTGRES_DB ?? 'questa';
+  return sh(
+    ['docker', 'compose', 'exec', '-T', 'postgres', 'psql', '-U', user, '-d', db,
+      '-v', 'ON_ERROR_STOP=1', '-At', '-v', `perf=${perf}`, '-f', '-'],
+    { input: readFileSync(resolve(here, file), 'utf8'), quiet: true },
+  ).trim();
+}
+
+const ms = (v) => (v === undefined ? '–' : `${Math.round(v)} ms`);
+
+function report(scenario, summary, verify) {
+  const m = summary.metrics;
+  const duration = m.http_req_duration?.values ?? {};
+  const reqs = m.http_reqs?.values ?? {};
+  const failed = m.http_req_failed?.values?.rate ?? 0;
+  const count = (name) => m[name]?.values?.count ?? 0;
+  const status5xx = count('reservations_5xx');
+  const totalReqs = reqs.count ?? 0;
+  const row = {
+    scenario,
+    requests: totalReqs,
+    rps: reqs.rate ?? 0,
+    p50: duration.med,
+    p95: duration['p(95)'],
+    p99: duration['p(99)'],
+    max: duration.max,
+    errorRate5xx: totalReqs ? status5xx / totalReqs : 0,
+    nonExpectedRate: failed,
+    held: count('reservations_held'),
+    conflicts: count('reservations_conflict'),
+    verify,
+  };
+  console.log(`\n=== ${scenario} ===`);
+  console.log(`requests        ${totalReqs}  (${row.rps.toFixed(1)} req/s)`);
+  console.log(`latency         p50 ${ms(row.p50)} · p95 ${ms(row.p95)} · p99 ${ms(row.p99)} · max ${ms(row.max)}`);
+  if (WRITE_SCENARIOS.has(scenario)) {
+    console.log(`held / taken    ${row.held} / ${row.conflicts}   5xx: ${status5xx}`);
+  } else {
+    console.log(`non-2xx rate    ${(failed * 100).toFixed(2)} %`);
+  }
+  if (verify) console.log(`invariants      ${JSON.stringify(verify, null, 2)}`);
+  return row;
+}
+
+function record(row, opts) {
+  const tag = sh(['git', 'describe', '--tags', '--always', '--dirty'], { quiet: true }).trim();
+  const machine = 'R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB)';
+  const load = row.scenario === 'browse'
+    ? `${opts.rate ?? 200} req/s × ${opts.duration ?? '30s'}`
+    : `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt (${opts.vus ?? 1000} VU)`;
+  let doubleSold = '–';
+  if (row.scenario === 'contention') {
+    doubleSold = `**${row.verify.i1DoubleSoldSeats}** ghế (+${row.verify.i1ExtraTickets} vé thừa)`;
+  } else if (row.scenario === 'standing') {
+    const z = row.verify.standing[0];
+    doubleSold = `**${z.oversold}** vé vượt sức chứa (${z.ticketsIssued}/${z.capacity})`;
+  }
+  const errors = row.scenario === 'browse'
+    ? `${(row.nonExpectedRate * 100).toFixed(2)} %`
+    : `${(row.errorRate5xx * 100).toFixed(2)} %`;
+  const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(row.p50)} | ${ms(row.p95)} | ${ms(row.p99)} | ${errors} | ${opts.record} |\n`;
+  appendFileSync(resolve(repo, 'docs/benchmarks.md'), line);
+  console.log('\nRecorded in docs/benchmarks.md');
+}
+
+const opts = parseArgs(process.argv.slice(2));
+if (!SCENARIOS.has(opts.scenario)) {
+  console.error(`Usage: pnpm loadtest <${[...SCENARIOS].join('|')}> [--vus N --iters N | --rate N --duration 30s] [--record "note" --phase N]`);
+  process.exit(1);
+}
+const fixturesPath = resolve(here, 'data/fixtures.json');
+if (!existsSync(fixturesPath)) {
+  console.error('load-tests/data/fixtures.json is missing. Run: pnpm --filter @questa/api db:seed');
+  process.exit(1);
+}
+const { loadTestPerformanceId: perf, tokenExpiresAt } = JSON.parse(readFileSync(fixturesPath, 'utf8'));
+if (new Date(tokenExpiresAt) < new Date(Date.now() + 10 * 60 * 1000)) {
+  console.error('Seeded tokens expire soon. Re-run: pnpm --filter @questa/api db:seed');
+  process.exit(1);
+}
+mkdirSync(resolve(here, 'results'), { recursive: true });
+
+if (WRITE_SCENARIOS.has(opts.scenario)) {
+  console.log(`Resetting performance ${perf}…`);
+  psql('sql/reset-performance.sql', perf);
+}
+
+const env = [];
+for (const key of ['vus', 'iters', 'rate', 'duration']) {
+  if (opts[key]) env.push('-e', `${key.toUpperCase()}=${opts[key]}`);
+}
+sh(['docker', 'compose', '--profile', 'loadtest', 'run', '--rm', ...env, 'k6', 'run', '--quiet',
+  `/load-tests/scenarios/${opts.scenario}.js`]);
+
+const summary = JSON.parse(readFileSync(resolve(here, `results/${opts.scenario}.json`), 'utf8'));
+const verify = WRITE_SCENARIOS.has(opts.scenario)
+  ? JSON.parse(psql('verify/invariants.sql', perf))
+  : null;
+const row = report(opts.scenario, summary, verify);
+if (opts.record) record(row, opts);

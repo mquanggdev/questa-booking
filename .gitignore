@@ -16,3 +16,4 @@ load-tests/data/
 # Personal study material, kept local only (owner reads, not published)
 docs/learning/
 docs/showcase/
+load-tests/results/

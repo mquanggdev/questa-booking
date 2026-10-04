@@ -6,7 +6,7 @@ Skill ở đây là tài liệu tham khảo: agent chỉ dùng khi việc đang 
 | --- | --- | --- |
 | `test-driven-development`, `doubt-driven-development`, `documentation-and-adrs`, `planning-and-task-breakdown`, `api-and-interface-design`, `security-and-hardening`, `debugging-and-error-recovery`, `source-driven-development` | [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT, xem `LICENSE.agent-skills`) | commit `9d0c60d` (2026-10-01) |
 | `prisma-cli`, `prisma-client-api` | [prisma/skills](https://github.com/prisma/skills) (MIT), lấy qua `prisma init` của Prisma 7.10.0 | skill 7.9.1 |
-| `phase-check` | Viết riêng cho dự án | — |
+| `phase-check`, `benchmark` | Viết riêng cho dự án | — |
 
 Skill bên thứ ba được chép nguyên văn, không sửa. Các điều chỉnh cho dự án (ví dụ bỏ qua review chéo khác model trong `doubt-driven-development`) ghi trong `AGENTS.md`, để có thể cập nhật skill mà không mất điều chỉnh.
 
