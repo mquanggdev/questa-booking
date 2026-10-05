@@ -3,8 +3,8 @@
 // because Prisma cannot express them in this file.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
   // tsc keeps import paths as written, so the compiled client must import .js
   moduleFormat        = "esm"
   importFileExtension = "js"
@@ -181,19 +181,26 @@ enum OrderStatus {
 }
 
 model Order {
-  id            String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
-  userId        String      @map("user_id") @db.Uuid
-  performanceId String      @map("performance_id") @db.Uuid
-  status        OrderStatus @default(PENDING)
-  totalAmount   Int         @map("total_amount")
-  expiresAt     DateTime    @map("expires_at") @db.Timestamptz
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  id             String      @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  performanceId  String      @map("performance_id") @db.Uuid
+  status         OrderStatus @default(PENDING)
+  totalAmount    Int         @map("total_amount")
+  expiresAt      DateTime    @map("expires_at") @db.Timestamptz
+  // Client-chosen key from the Idempotency-Key header: retrying a request
+  // with the same key returns the same order instead of creating a second.
+  idempotencyKey String      @map("idempotency_key")
+  // SHA-256 of the request body, to reject the same key reused for a
+  // different request.
+  requestHash    String      @map("request_hash")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
 
   user        User        @relation(fields: [userId], references: [id])
   performance Performance @relation(fields: [performanceId], references: [id])
   items       OrderItem[]
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, performanceId])
   @@index([status, expiresAt])
   @@map("orders")
