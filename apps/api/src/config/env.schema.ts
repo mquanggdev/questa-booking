@@ -30,6 +30,11 @@ export const envSchema = z.object({
   SWAGGER_ENABLED: z.stringbool().default(true),
   // How long a reservation holds its tickets before the order expires.
   HOLD_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  // How numbered seats are locked when held. All three are correct; they are
+  // kept side by side so the benchmark can compare them (ADR-0008).
+  SEAT_HOLD_STRATEGY: z
+    .enum(['conditional', 'pessimistic', 'optimistic'])
+    .default('conditional'),
 });
 
 export type Env = z.infer<typeof envSchema>;

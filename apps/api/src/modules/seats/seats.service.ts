@@ -11,6 +11,13 @@ export interface SeatBlock {
   seatsPerRow: number;
 }
 
+export type SeatHoldStrategy = 'conditional' | 'pessimistic' | 'optimistic';
+
+export interface HeldSeat {
+  id: string;
+  zoneId: string;
+}
+
 export interface SeatView {
   id: string;
   zoneId: string;
@@ -78,47 +85,168 @@ export class SeatsService {
   }
 
   /**
-   * PHASE 2 BASELINE: DELIBERATELY NAIVE. Do not copy.
+   * Holds AVAILABLE seats for a reservation, inside the caller's transaction.
+   * Throws (so the transaction rolls back) unless every seat could be held.
    *
-   * Check-then-act: read the seats, see they are AVAILABLE, then mark them
-   * HELD with an UPDATE that does not re-check the status. Between the read
-   * and the write another request can read the same seats as AVAILABLE too,
-   * and both "win". Running inside a transaction does not help: at READ
-   * COMMITTED, plain reads take no locks. Phase 3 fixes this.
+   * Three correct strategies, kept side by side for the phase 3 benchmark
+   * (ADR-0008). Whatever the strategy, the partial unique index
+   * order_items_active_seat_key is the last line of defence (I1).
    */
-  async holdNaive(
+  async hold(
     tx: Prisma.TransactionClient,
     performanceId: string,
     seatIds: string[],
-  ): Promise<{ id: string; zoneId: string }[]> {
-    const seats = await tx.seat.findMany({
-      where: { id: { in: seatIds }, performanceId },
-      select: { id: true, zoneId: true, status: true },
+    strategy: SeatHoldStrategy,
+  ): Promise<HeldSeat[]> {
+    const ids = [...seatIds].sort();
+    switch (strategy) {
+      case 'conditional':
+        return this.holdConditional(tx, performanceId, ids);
+      case 'pessimistic':
+        return this.holdPessimistic(tx, performanceId, ids);
+      case 'optimistic':
+        return this.holdOptimistic(tx, performanceId, ids);
+    }
+  }
+
+  /** One statement: the WHERE clause is the check and the row lock is the guard. */
+  private async holdConditional(
+    tx: Prisma.TransactionClient,
+    performanceId: string,
+    ids: string[],
+  ): Promise<HeldSeat[]> {
+    // "AND status = 'AVAILABLE'" is re-evaluated on the latest committed row
+    // version after waiting for any concurrent writer's lock (READ COMMITTED
+    // re-check), so of two requests for one seat exactly one matches.
+    const held = await tx.$queryRaw<{ id: string; zone_id: string }[]>`
+      UPDATE seats
+      SET status = 'HELD'
+      WHERE performance_id = ${performanceId}::uuid
+        AND id = ANY(${ids}::uuid[])
+        AND status = 'AVAILABLE'
+      RETURNING id, zone_id
+    `;
+    if (held.length !== ids.length) {
+      await this.explainMiss(
+        tx,
+        performanceId,
+        ids,
+        held.map((h) => h.id),
+      );
+    }
+    return held.map((h) => ({ id: h.id, zoneId: h.zone_id }));
+  }
+
+  /** Lock the rows first, check in code, then write. */
+  private async holdPessimistic(
+    tx: Prisma.TransactionClient,
+    performanceId: string,
+    ids: string[],
+  ): Promise<HeldSeat[]> {
+    // FOR UPDATE takes the row locks before reading. ORDER BY id makes every
+    // request lock overlapping seats in the same order, so two requests can
+    // never wait on each other in a cycle (no deadlock).
+    const rows = await tx.$queryRaw<
+      { id: string; zone_id: string; status: SeatStatus }[]
+    >`
+      SELECT id, zone_id, status
+      FROM seats
+      WHERE performance_id = ${performanceId}::uuid
+        AND id = ANY(${ids}::uuid[])
+      ORDER BY id
+      FOR UPDATE
+    `;
+    const available = rows.filter((r) => r.status === 'AVAILABLE');
+    if (available.length !== ids.length) {
+      await this.explainMiss(
+        tx,
+        performanceId,
+        ids,
+        available.map((r) => r.id),
+      );
+    }
+    // Safe without re-checking the status: we hold the locks since the read.
+    await tx.$executeRaw`
+      UPDATE seats SET status = 'HELD' WHERE id = ANY(${ids}::uuid[])
+    `;
+    return rows.map((r) => ({ id: r.id, zoneId: r.zone_id }));
+  }
+
+  /** Read without locking, then write only if nobody changed the row since. */
+  private async holdOptimistic(
+    tx: Prisma.TransactionClient,
+    performanceId: string,
+    ids: string[],
+  ): Promise<HeldSeat[]> {
+    // xmin is PostgreSQL's built-in row version: the id of the transaction
+    // that last wrote the row. It changes on every UPDATE, so it works as a
+    // version column without adding one to the schema.
+    const rows = await tx.$queryRaw<
+      { id: string; zone_id: string; status: SeatStatus; version: string }[]
+    >`
+      SELECT id, zone_id, status, xmin::text AS version
+      FROM seats
+      WHERE performance_id = ${performanceId}::uuid
+        AND id = ANY(${ids}::uuid[])
+    `;
+    const available = rows.filter((r) => r.status === 'AVAILABLE');
+    if (available.length !== ids.length) {
+      await this.explainMiss(
+        tx,
+        performanceId,
+        ids,
+        available.map((r) => r.id),
+      );
+    }
+    // Compare-and-set: a row whose version moved since the read was taken by
+    // someone else; it does not match and the hold fails (no retry: the seat
+    // is gone).
+    const held = await tx.$queryRaw<{ id: string }[]>`
+      UPDATE seats AS s
+      SET status = 'HELD'
+      FROM unnest(${rows.map((r) => r.id)}::uuid[], ${rows.map((r) => r.version)}::text[]) AS v(id, version)
+      WHERE s.id = v.id AND s.xmin::text = v.version
+      RETURNING s.id
+    `;
+    if (held.length !== ids.length) {
+      await this.explainMiss(
+        tx,
+        performanceId,
+        ids,
+        held.map((h) => h.id),
+      );
+    }
+    return rows.map((r) => ({ id: r.id, zoneId: r.zone_id }));
+  }
+
+  /** Throws the right error for the seats that could not be held. */
+  private async explainMiss(
+    tx: Prisma.TransactionClient,
+    performanceId: string,
+    ids: string[],
+    heldIds: string[],
+  ): Promise<never> {
+    const missed = ids.filter((id) => !heldIds.includes(id));
+    const existing = await tx.seat.findMany({
+      where: { id: { in: missed }, performanceId },
+      select: { id: true },
     });
-    if (seats.length !== seatIds.length) {
-      const found = new Set(seats.map((s) => s.id));
+    const known = new Set(existing.map((s) => s.id));
+    const foreign = missed.filter((id) => !known.has(id));
+    if (foreign.length > 0) {
       throw new AppException(
         HttpStatus.BAD_REQUEST,
         ErrorCode.INVALID_TICKET_SELECTION,
         'Some seats do not belong to this performance',
-        { seatIds: seatIds.filter((id) => !found.has(id)) },
+        { seatIds: foreign },
       );
     }
-    const taken = seats.filter((s) => s.status !== 'AVAILABLE');
-    if (taken.length > 0) {
-      throw new AppException(
-        HttpStatus.CONFLICT,
-        ErrorCode.SEAT_UNAVAILABLE,
-        'Some seats are no longer available',
-        { seatIds: taken.map((s) => s.id) },
-      );
-    }
-    // No "AND status = 'AVAILABLE'" here: that missing condition is the bug.
-    await tx.seat.updateMany({
-      where: { id: { in: seatIds } },
-      data: { status: 'HELD' },
-    });
-    return seats.map((s) => ({ id: s.id, zoneId: s.zoneId }));
+    throw new AppException(
+      HttpStatus.CONFLICT,
+      ErrorCode.SEAT_UNAVAILABLE,
+      'Some seats are no longer available',
+      { seatIds: missed },
+    );
   }
 
   /** AVAILABLE seat count per zone. */

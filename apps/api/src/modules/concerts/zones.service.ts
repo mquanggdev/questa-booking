@@ -6,35 +6,44 @@ import type { Prisma } from '../../generated/prisma/client.js';
 @Injectable()
 export class ZonesService {
   /**
-   * PHASE 2 BASELINE: DELIBERATELY NAIVE. Do not copy.
+   * Holds standing tickets with one atomic statement: the capacity check and
+   * the increment happen together, on the latest committed counters, so two
+   * concurrent requests can never both take the last ticket (I9). The CHECK
+   * constraint zones_within_capacity backs this up at the database level.
    *
-   * Read the counters, check in application code, then write back an
-   * absolute value. Two requests that read at the same moment both pass the
-   * check, and the second write overwrites the first ("lost update"): the
-   * zone ends up oversold AND held_count undercounts the tickets sold.
-   * Phase 3 replaces this with one conditional UPDATE.
+   * Every request for a zone updates the SAME row, and the row lock lasts
+   * until commit (hot row). Callers should run this as the last statement of
+   * their transaction so the lock is held as briefly as possible.
    */
-  async holdStandingNaive(
+  async holdStanding(
     tx: Prisma.TransactionClient,
+    performanceId: string,
     zoneId: string,
     quantity: number,
   ): Promise<void> {
-    const zone = await tx.zone.findUniqueOrThrow({
+    const updated = await tx.$executeRaw`
+      UPDATE zones
+      SET held_count = held_count + ${quantity}
+      WHERE id = ${zoneId}::uuid
+        AND performance_id = ${performanceId}::uuid
+        AND type = 'STANDING'
+        AND held_count + sold_count + ${quantity} <= capacity
+    `;
+    if (updated === 1) {
+      return;
+    }
+    const zone = await tx.zone.findUnique({
       where: { id: zoneId },
       select: { capacity: true, heldCount: true, soldCount: true },
     });
-    const available = zone.capacity - zone.heldCount - zone.soldCount;
-    if (available < quantity) {
-      throw new AppException(
-        HttpStatus.CONFLICT,
-        ErrorCode.SOLD_OUT,
-        'Not enough standing tickets left in this zone',
-        { zoneId, requested: quantity, available: Math.max(available, 0) },
-      );
-    }
-    await tx.zone.update({
-      where: { id: zoneId },
-      data: { heldCount: zone.heldCount + quantity },
-    });
+    const available = zone
+      ? zone.capacity - zone.heldCount - zone.soldCount
+      : 0;
+    throw new AppException(
+      HttpStatus.CONFLICT,
+      ErrorCode.SOLD_OUT,
+      'Not enough standing tickets left in this zone',
+      { zoneId, requested: quantity, available: Math.max(available, 0) },
+    );
   }
 }

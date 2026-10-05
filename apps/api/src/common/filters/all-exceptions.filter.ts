@@ -9,6 +9,7 @@ import {
 import type { Response } from 'express';
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorCode, type ErrorBody } from '../errors/error-codes.js';
+import { PgCode, pgError } from '../errors/pg-error.js';
 
 const codeByStatus: Partial<Record<number, ErrorCode>> = {
   400: ErrorCode.BAD_REQUEST,
@@ -52,6 +53,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return {
         status: exception.getStatus(),
         body: this.fromHttpException(exception),
+      };
+    }
+
+    // Deadlock or serialization failure: PostgreSQL aborted this transaction
+    // so another could proceed. Nothing was written; retrying is safe.
+    const pg = pgError(exception);
+    if (
+      pg?.code === PgCode.DEADLOCK_DETECTED ||
+      pg?.code === PgCode.SERIALIZATION_FAILURE
+    ) {
+      return {
+        status: HttpStatus.SERVICE_UNAVAILABLE,
+        body: {
+          code: ErrorCode.SERVICE_UNAVAILABLE,
+          message: 'Request conflicted with another one, please retry',
+        },
+        retryAfter: 1,
       };
     }
 
