@@ -28,6 +28,57 @@ const orderSelect = {
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Serializes the transactions of one user for one performance until they
+   * commit or roll back. Needed for two rules that span several orders:
+   * the per-account ticket limit (I10) and replaying an Idempotency-Key that
+   * two concurrent requests share (I5). Requests of different users never
+   * wait on each other.
+   */
+  async lockBuyer(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    performanceId: string,
+  ): Promise<void> {
+    // Transaction-scoped advisory lock on a 64-bit hash of the pair. A rare
+    // hash collision only makes two unrelated buyers wait briefly.
+    // $executeRaw, not $queryRaw: the function returns `void`, which Prisma
+    // cannot deserialize as a result column.
+    await tx.$executeRaw`
+      SELECT pg_advisory_xact_lock(hashtextextended(${`${userId}:${performanceId}`}, 0))
+    `;
+  }
+
+  /** The order this user already created with this Idempotency-Key, if any. */
+  findByIdempotencyKey(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<(OrderResponseDto & { requestHash: string }) | null> {
+    return tx.order.findUnique({
+      where: { userId_idempotencyKey: { userId, idempotencyKey } },
+      select: { ...orderSelect, requestHash: true },
+    });
+  }
+
+  /** Tickets the user holds or bought for a performance (active items only). */
+  countActiveTickets(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    performanceId: string,
+  ): Promise<number> {
+    return tx.orderItem.count({
+      where: {
+        releasedAt: null,
+        order: {
+          userId,
+          performanceId,
+          status: { in: ['PENDING', 'PAID'] },
+        },
+      },
+    });
+  }
+
   /** A PENDING order with one row per ticket, inside the caller's transaction. */
   createPending(
     tx: Prisma.TransactionClient,
@@ -35,6 +86,8 @@ export class OrdersService {
       userId: string;
       performanceId: string;
       expiresAt: Date;
+      idempotencyKey: string;
+      requestHash: string;
       items: NewOrderItem[];
     },
   ): Promise<OrderResponseDto> {
@@ -44,6 +97,8 @@ export class OrdersService {
         performanceId: input.performanceId,
         status: 'PENDING',
         expiresAt: input.expiresAt,
+        idempotencyKey: input.idempotencyKey,
+        requestHash: input.requestHash,
         totalAmount: input.items.reduce((sum, item) => sum + item.price, 0),
         items: { create: input.items },
       },
