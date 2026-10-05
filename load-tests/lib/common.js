@@ -27,6 +27,8 @@ export function authHeaders(token) {
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
+      // One key per purchase attempt (phase 3+). Unique across VUs and runs.
+      'Idempotency-Key': `k6-${exec.vu.idInTest}-${exec.vu.iterationInScenario}-${Date.now()}`,
     },
   };
 }

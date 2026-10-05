@@ -22,7 +22,7 @@ try {
   // defaults below
 }
 
-const WRITE_SCENARIOS = new Set(['contention', 'standing']);
+const WRITE_SCENARIOS = new Set(['contention', 'standing', 'quota']);
 const SCENARIOS = new Set([...WRITE_SCENARIOS, 'browse']);
 
 function parseArgs(argv) {
@@ -98,13 +98,17 @@ function record(row, opts) {
   const machine = 'R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB)';
   const load = row.scenario === 'browse'
     ? `${opts.rate ?? 200} req/s × ${opts.duration ?? '30s'}`
-    : `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt (${opts.vus ?? 1000} VU)`;
+    : row.scenario === 'quota'
+      ? `${Number(opts.vus ?? 500) * Number(opts.iters ?? 2)} lượt từ ${opts.accounts ?? 20} tài khoản`
+      : `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt (${opts.vus ?? 1000} VU)`;
   let doubleSold = '–';
   if (row.scenario === 'contention') {
     doubleSold = `**${row.verify.i1DoubleSoldSeats}** ghế (+${row.verify.i1ExtraTickets} vé thừa)`;
   } else if (row.scenario === 'standing') {
     const z = row.verify.standing[0];
-    doubleSold = `**${z.oversold}** vé vượt sức chứa (${z.ticketsIssued}/${z.capacity})`;
+    doubleSold = `**${z.oversold}** vé vượt sức chứa (${z.ticketsIssued}/${z.capacity}), lệch bộ đếm ${z.lostUpdates}`;
+  } else if (row.scenario === 'quota') {
+    doubleSold = `**${row.verify.i10Violations}** tài khoản vượt giới hạn (tối đa ${row.verify.maxTicketsOfOneBuyer} vé/người)`;
   }
   const errors = row.scenario === 'browse'
     ? `${(row.nonExpectedRate * 100).toFixed(2)} %`
@@ -137,7 +141,7 @@ if (WRITE_SCENARIOS.has(opts.scenario)) {
 }
 
 const env = [];
-for (const key of ['vus', 'iters', 'rate', 'duration']) {
+for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts']) {
   if (opts[key]) env.push('-e', `${key.toUpperCase()}=${opts[key]}`);
 }
 sh(['docker', 'compose', '--profile', 'loadtest', 'run', '--rm', ...env, 'k6', 'run', '--quiet',

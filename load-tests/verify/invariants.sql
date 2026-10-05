@@ -4,9 +4,10 @@
 -- I1: a seat belongs to at most one active order.
 -- I9: in a standing zone, held + sold <= capacity, and the counters match the
 --     tickets actually issued (active order_items).
+-- I10: no account holds more active tickets than max_tickets_per_user.
 -- "Active" = order PENDING or PAID and the item not released.
 WITH active AS (
-  SELECT oi.order_id, oi.zone_id, oi.seat_id
+  SELECT oi.order_id, oi.zone_id, oi.seat_id, o.user_id
   FROM order_items oi
   JOIN orders o ON o.id = oi.order_id
   WHERE o.performance_id = :'perf'
@@ -18,6 +19,9 @@ seat_owners AS (
   FROM active
   WHERE seat_id IS NOT NULL
   GROUP BY seat_id
+),
+per_user AS (
+  SELECT user_id, count(*) AS tickets FROM active GROUP BY user_id
 ),
 standing AS (
   SELECT z.name, z.capacity, z.held_count, z.sold_count,
@@ -39,6 +43,10 @@ SELECT json_build_object(
       'oversold', greatest(issued - capacity, 0),
       'lostUpdates', issued - (held_count + sold_count)
     )) FROM standing), '[]'::json),
+  'buyers', (SELECT count(*) FROM per_user),
+  'maxTicketsOfOneBuyer', (SELECT coalesce(max(tickets), 0) FROM per_user),
+  'i10Violations', (SELECT count(*) FROM per_user
+                    WHERE tickets > (SELECT max_tickets_per_user FROM performances WHERE id = :'perf')),
   'i9Violations', (SELECT count(*) FROM standing
                    WHERE held_count + sold_count > capacity
                       OR issued > capacity
