@@ -167,7 +167,7 @@ Thuật ngữ: `concerts` là chương trình; `performances` là một đêm di
 | `presale_codes` | `sale_phase_id`, `code`, `redeemed_by`, `redeemed_at` | `code` unique, mỗi mã dùng một lần |
 | `zones` | `performance_id`, `name`, `type`, `price`, `capacity`, `held_count`, `sold_count` | `type`: `SEATED`, `STANDING`. Check `held_count + sold_count <= capacity` |
 | `seats` | `performance_id`, `zone_id`, `row_label`, `seat_number`, `status` | Chỉ có ở khu `SEATED`. Unique (`performance_id`, `zone_id`, `row_label`, `seat_number`) |
-| `orders` | `user_id`, `performance_id`, `status`, `total_amount`, `expires_at`, `idempotency_key` | Unique (`user_id`, `idempotency_key`) |
+| `orders` | `user_id`, `performance_id`, `status`, `total_amount`, `expires_at`, `idempotency_key`, `request_hash` | Unique (`user_id`, `idempotency_key`); `request_hash` phát hiện key bị dùng lại cho request khác |
 | `order_items` | `order_id`, `zone_id`, `seat_id`, `price`, `released_at` | Mỗi dòng là một vé. `seat_id` rỗng với vé đứng. Partial unique index trên `seat_id` khi `released_at IS NULL` |
 | `payments` | `order_id`, `provider`, `provider_txn_id`, `amount`, `status`, `raw_payload` | `provider_txn_id` unique |
 | `tickets` | `order_item_id`, `code`, `checked_in_at`, `checked_in_by` | `order_item_id` unique, `code` unique, ngẫu nhiên 128-bit |
@@ -176,7 +176,7 @@ Thuật ngữ: `concerts` là chương trình; `performances` là một đêm di
 | `performance_sales_stats` | `performance_id`, `zone_id`, `tickets_sold`, `revenue` | Do consumer thống kê cập nhật |
 | `audit_logs` | `actor_id`, `action`, `entity`, `entity_id`, `metadata`, `created_at` | Do consumer audit ghi |
 
-Cột `version` cho optimistic locking chỉ được thêm vào `seats` nếu benchmark ở giai đoạn 3 chứng minh nó có ích (xem mục 6, luồng A).
+Không có cột `version`: giai đoạn 3 dùng `xmin` (phiên bản dòng có sẵn của PostgreSQL) cho cách optimistic, và benchmark không chỉ ra cách nào nhanh hơn ([ADR-0008](adr/0008-seat-and-standing-locking.md)).
 
 ### Ràng buộc quan trọng nhất
 
@@ -193,7 +193,7 @@ WHERE id = $1 AND held_count + sold_count + $n <= capacity
 
 Không có dòng nào bị ảnh hưởng nghĩa là khu đã hết vé. Ràng buộc check trên bảng là lớp bảo vệ cuối cùng.
 
-Khi 5.000 người cùng cập nhật một dòng, các câu lệnh phải xếp hàng chạy lần lượt (hot row). Giai đoạn 3 đo hiện tượng này. Sau đó thử chia bộ đếm thành N dòng con, mỗi dòng giữ một phần sức chứa, và ghi kết quả so sánh vào `docs/adr/`.
+Khi 5.000 người cùng cập nhật một dòng, các câu lệnh phải xếp hàng chạy lần lượt (hot row). Giai đoạn 3 đã đo: với câu `UPDATE` có điều kiện chạy cuối transaction, chỉ khoảng 3,6% thời gian là chờ khóa, còn nút thắt là CPU của tiến trình API. Vì vậy chưa chia bộ đếm thành nhiều dòng; sẽ đo lại khi có nhiều instance ở giai đoạn 7a ([ADR-0008](adr/0008-seat-and-standing-locking.md)).
 
 ### Trạng thái ghế
 
@@ -237,7 +237,7 @@ Tất cả đọc từ biến môi trường.
 2. Nếu `Idempotency-Key` đã tồn tại cho người dùng này, trả về đơn cũ. Nếu hai request cùng key đến song song, request thua sẽ đụng ràng buộc unique; lỗi này được bắt lại và trả về đơn đã có, không trả 500.
 3. Giữ chỗ trong Redis bằng một Lua script, làm cổng lọc mềm để chặn bớt tải trước khi vào DB. Với ghế ngồi: đặt key `seat:hold:{seatId}` với `NX` và TTL bằng thời gian giữ cộng thời gian ân hạn. Với vé đứng: giảm bộ đếm số vé còn lại của khu, không cho xuống dưới 0. Chỉ cần một phần thất bại thì không giữ gì cả.
 4. Mở transaction và lấy `pg_advisory_xact_lock` theo (`user_id`, `performance_id`). Đếm số vé tài khoản đang giữ và đã mua cho đêm diễn; từ chối nếu vượt giới hạn.
-5. Trong transaction đó, với ghế ngồi: chuyển các ghế sang `HELD` chỉ khi chúng đều `AVAILABLE`. Giai đoạn 3 so sánh ba cách: `SELECT ... FOR UPDATE` theo thứ tự `id` tăng dần, `UPDATE ... WHERE status = 'AVAILABLE'` rồi kiểm tra số dòng, và optimistic locking bằng cột `version`. Với vé đứng: chạy câu `UPDATE zones` có điều kiện.
+5. Trong transaction đó, với ghế ngồi: `UPDATE seats SET status = 'HELD' WHERE ... AND status = 'AVAILABLE'` rồi kiểm tra số dòng (đã so sánh với `FOR UPDATE` và optimistic theo `xmin`, [ADR-0008](adr/0008-seat-and-standing-locking.md)). Với vé đứng: câu `UPDATE zones` có điều kiện, chạy cuối transaction để giữ khóa dòng nóng ngắn nhất.
 6. Tạo đơn `PENDING` với `expires_at` và một dòng `order_items` cho mỗi vé.
 7. Nếu transaction thất bại, hoàn tác những gì đã giữ trong Redis.
 8. Tạo delayed job `expire-order` chạy tại `expires_at` cộng thời gian ân hạn.
@@ -350,7 +350,7 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | POST | `/performances/:id/presale/redeem` | `CUSTOMER` | Kích hoạt mã ưu tiên cho đợt bán trước |
 | POST | `/performances/:id/queue` | `CUSTOMER` | Vào hàng chờ ảo |
 | GET | `/performances/:id/queue/me` | `CUSTOMER` | Vị trí trong hàng, vé vào cửa nếu đã đến lượt |
-| POST | `/reservations` | `CUSTOMER` | Giữ vé: danh sách ghế ngồi và số lượng theo khu đứng. Bắt buộc header `Idempotency-Key` |
+| POST | `/reservations` | `CUSTOMER` | Giữ vé: danh sách ghế ngồi và số lượng theo khu đứng. Bắt buộc header `Idempotency-Key`; gửi lại cùng key trả lại đơn cũ với header `Idempotent-Replayed: true`, cùng key cho request khác trả `422` ([ADR-0009](adr/0009-idempotency-and-ticket-limit.md)) |
 | GET | `/orders` | `CUSTOMER` | Lịch sử đơn của tôi |
 | GET | `/orders/:id` | `CUSTOMER` | Chi tiết đơn |
 | POST | `/orders/:id/cancel` | `CUSTOMER` | Hủy đơn `PENDING` |
@@ -464,7 +464,7 @@ Laptop: AMD Ryzen 5 4600H (6 nhân, 12 luồng), 16 GB RAM, Windows 11, Docker D
 | --- | --- | --- |
 | `contention` | 5.000 khách (1.000 VU × 5 lượt) cùng tranh 100 ghế | Không bán trùng (I1) |
 | `standing` | 5.000 khách (1.000 VU × 5 lượt) cùng tranh 500 vé khu đứng | Không bán quá sức chứa (I9) |
-| `quota` | Một tài khoản gửi nhiều request giữ vé song song | Không vượt giới hạn mua (I10) |
+| `quota` | 20 tài khoản, mỗi tài khoản 50 request giữ vé song song | Không vượt giới hạn mua (I10) |
 | `browse` | Đọc danh sách và chi tiết đêm diễn | Hiệu quả của cache |
 | `full-flow` | Giữ vé, thanh toán giả lập, nhận vé | Luồng đầy đủ, I2, I7 |
 | `webhook-chaos` | IPN gửi trùng, gửi trễ, gửi sau khi đơn hết hạn, sai số tiền | I4, I8, I12 |
@@ -546,7 +546,7 @@ Hoàn thành khi: load test cho thấy có ghế bị bán trùng và con số �
 ### Giai đoạn 3: Chống bán trùng ở database
 
 - Thêm partial unique index trên `order_items` và ràng buộc check trên `zones`.
-- Viết lại giữ ghế ngồi bằng transaction; so sánh ba cách khóa ở luồng A bước 5.
+- Viết lại giữ ghế ngồi bằng transaction; so sánh ba cách khóa ở luồng A bước 5 (`SEAT_HOLD_STRATEGY`).
 - Viết lại giữ vé đứng bằng câu `UPDATE` có điều kiện; đo hot row, thử chia bộ đếm.
 - Thêm `Idempotency-Key`, kể cả trường hợp hai request cùng key đến song song.
 - Thêm giới hạn mua mỗi tài khoản bằng advisory lock; kịch bản k6 `quota`.

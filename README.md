@@ -4,7 +4,7 @@
 
 A concert ticketing backend built to sell exactly the seats that exist when thousands of people buy at the same moment, and to prove it with numbers.
 
-> **Status:** Phase 2 done: a deliberately naive booking endpoint and the first load-test baseline. It double-sells, on purpose. Phase 3 fixes it.
+> **Status:** Phase 3 done: PostgreSQL itself refuses to double-sell (conditional updates, a partial unique index, a CHECK constraint, advisory locks, Idempotency-Key). 0 seats sold twice in every run.
 
 ## The problem
 
@@ -61,10 +61,14 @@ Every number comes from `pnpm loadtest <scenario>`: k6 inside the compose networ
 | 2: naive "read, check, write" | 5,000 buyers, 100 seats | **4–11 seats sold twice** in every run |
 | 2: naive | 5,000 buyers, 500 standing tickets | **925 tickets issued** for 500 places; the counter recorded 94 (831 lost updates) |
 | 2: naive | catalog reads, one API process | 100 req/s at p95 41 ms; saturates (CPU-bound) before 200 req/s |
+| **3: database guards** | 5,000 buyers, 100 seats | **0 seats sold twice in 5 runs in a row**, exactly 100 tickets |
+| 3 | 5,000 buyers, 500 standing tickets | exactly **500** tickets, counter matches |
+| 3 | 20 accounts × 50 parallel requests, limit 6 | exactly **6 per account** (120 total) |
+| 3 | 3 seat-locking strategies compared | all correct; differences within run-to-run noise ([ADR-0008](docs/adr/0008-seat-and-standing-locking.md)) |
 
 ```bash
 pnpm --filter @questa/api db:seed
-pnpm loadtest contention      # or: standing, browse
+pnpm loadtest contention      # or: standing, quota, browse
 ```
 
 ## Documentation
