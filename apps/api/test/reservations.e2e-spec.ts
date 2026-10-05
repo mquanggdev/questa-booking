@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Role } from '../src/generated/prisma/client.js';
 import {
   createTestApp,
@@ -14,7 +15,7 @@ interface Perf {
   zones: { id: string; name: string; type: string; price: number }[];
 }
 
-describe('Reservations (e2e), phase 2 baseline', () => {
+describe('Reservations (e2e): rules and validation', () => {
   let t: TestApp;
   let organizer: User;
   let customer: User;
@@ -28,7 +29,12 @@ describe('Reservations (e2e), phase 2 baseline', () => {
     return z;
   };
   const reserve = (u: User, body: object) =>
-    t.http().post('/api/v1/reservations').set(as(u)).send(body);
+    t
+      .http()
+      .post('/api/v1/reservations')
+      .set(as(u))
+      .set('Idempotency-Key', randomUUID())
+      .send(body);
 
   async function createPerformance(saleOpen = true): Promise<Perf> {
     const concert = await t
