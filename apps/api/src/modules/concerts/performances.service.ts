@@ -1,8 +1,20 @@
+import { InjectQueue } from '@nestjs/bullmq';
 import { HttpStatus, Injectable } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 import type { AuthUser } from '../../common/auth/auth.decorators.js';
 import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import { ZoneType } from '../../generated/prisma/client.js';
+import {
+  ZoneType,
+  type PerformanceStatus,
+  type Prisma,
+} from '../../generated/prisma/client.js';
+import {
+  cancelPerformanceJobId,
+  PAYMENTS_QUEUE,
+  PaymentJob,
+  type CancelPerformanceData,
+} from '../../queue/queue.constants.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { ConcertsService, isOwner } from './concerts.service.js';
@@ -40,6 +52,7 @@ export class PerformancesService {
     private readonly prisma: PrismaService,
     private readonly concerts: ConcertsService,
     private readonly seats: SeatsService,
+    @InjectQueue(PAYMENTS_QUEUE) private readonly payments: Queue,
   ) {}
 
   /**
@@ -195,6 +208,56 @@ export class PerformancesService {
         maxTicketsPerUser: dto.maxTicketsPerUser,
       },
     });
+    return this.getVisible(id, organizer);
+  }
+
+  /**
+   * Reads the performance status with a shared row lock (FOR SHARE) that
+   * lasts until the caller's transaction ends. Cancelling a performance needs
+   * an exclusive lock on the same row, so a payment and a cancellation can
+   * never interleave: whichever commits first is seen by the other (flow B
+   * vs "hủy đêm diễn").
+   */
+  async lockStatus(
+    tx: Prisma.TransactionClient,
+    id: string,
+  ): Promise<PerformanceStatus | null> {
+    const rows = await tx.$queryRaw<{ status: PerformanceStatus }[]>`
+      SELECT status FROM performances WHERE id = ${id}::uuid FOR SHARE
+    `;
+    return rows[0]?.status ?? null;
+  }
+
+  /** Status of a performance, or null if it does not exist. */
+  async statusOf(id: string): Promise<PerformanceStatus | null> {
+    const performance = await this.prisma.performance.findUnique({
+      where: { id },
+      select: { status: true },
+    });
+    return performance?.status ?? null;
+  }
+
+  /**
+   * Cancels a performance: no more sales from this instant, then a worker job
+   * cancels unpaid orders and refunds paid ones in batches.
+   */
+  async cancel(
+    id: string,
+    organizer: AuthUser,
+  ): Promise<PerformanceResponseDto> {
+    await this.assertOwner(id, organizer);
+    const changed = await this.prisma.$executeRaw`
+      UPDATE performances SET status = 'CANCELLED', updated_at = now()
+      WHERE id = ${id}::uuid AND status IN ('DRAFT', 'PUBLISHED')
+    `;
+    if (changed === 0) {
+      throw invalidState('This performance is already cancelled');
+    }
+    await this.payments.add(
+      PaymentJob.CANCEL_PERFORMANCE,
+      { performanceId: id } satisfies CancelPerformanceData,
+      { jobId: cancelPerformanceJobId(id) },
+    );
     return this.getVisible(id, organizer);
   }
 

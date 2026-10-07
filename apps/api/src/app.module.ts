@@ -6,7 +6,9 @@ import { AuthModule } from './modules/auth/auth.module.js';
 import { ConcertsModule } from './modules/concerts/concerts.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ReservationsModule } from './modules/reservations/reservations.module.js';
+import { TicketsModule } from './modules/tickets/tickets.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
@@ -44,6 +46,8 @@ import { RedisModule } from './redis/redis.module.js';
     ConcertsModule,
     OrdersModule,
     ReservationsModule,
+    PaymentsModule,
+    TicketsModule,
   ],
 })
 export class AppModule {}

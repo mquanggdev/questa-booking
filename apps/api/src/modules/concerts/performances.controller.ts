@@ -62,6 +62,21 @@ export class PerformancesController {
     return this.performances.publish(id, organizer);
   }
 
+  /**
+   * Cancels the performance: sales stop immediately; unpaid orders are
+   * cancelled and paid ones refunded in the background.
+   */
+  @ApiBearerAuth()
+  @Roles(Role.ORGANIZER)
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() organizer: AuthUser,
+  ): Promise<PerformanceResponseDto> {
+    return this.performances.cancel(id, organizer);
+  }
+
   /** Every seat with its status, and remaining tickets per zone */
   @Public()
   @Get(':id/seats')

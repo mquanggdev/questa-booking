@@ -234,6 +234,35 @@ export class SeatsService {
     `;
   }
 
+  /**
+   * HELD -> SOLD for the seats of an order being paid. Returns how many
+   * changed; the caller checks it matches, otherwise I2 would break.
+   */
+  async markSold(
+    tx: Prisma.TransactionClient,
+    seatIds: string[],
+  ): Promise<number> {
+    if (seatIds.length === 0) return 0;
+    return tx.$executeRaw`
+      UPDATE seats SET status = 'SOLD'
+      WHERE id = ANY(${seatIds}::uuid[]) AND status = 'HELD'
+    `;
+  }
+
+  /**
+   * SOLD -> AVAILABLE for the seats of a paid order that leaves PAID because
+   * its performance was cancelled. Keeps I2 exact: SOLD seats always match
+   * the items of PAID orders. Nobody can buy them again (the performance no
+   * longer sells).
+   */
+  async unsell(tx: Prisma.TransactionClient, seatIds: string[]): Promise<void> {
+    if (seatIds.length === 0) return;
+    await tx.$executeRaw`
+      UPDATE seats SET status = 'AVAILABLE'
+      WHERE id = ANY(${seatIds}::uuid[]) AND status = 'SOLD'
+    `;
+  }
+
   /** Throws the right error for the seats that could not be held. */
   private async explainMiss(
     tx: Prisma.TransactionClient,

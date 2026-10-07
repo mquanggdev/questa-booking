@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from './config/app-config.service.js';
 import { ConfigModule } from './config/config.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
+import { PaymentsProcessor } from './modules/payments/payments.processor.js';
 import { ReservationsModule } from './modules/reservations/reservations.module.js';
 import { ReservationsProcessor } from './modules/reservations/reservations.processor.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -28,7 +30,8 @@ import { RedisModule } from './redis/redis.module.js';
     RedisModule,
     QueueModule,
     ReservationsModule,
+    PaymentsModule,
   ],
-  providers: [ReservationsProcessor],
+  providers: [ReservationsProcessor, PaymentsProcessor],
 })
 export class WorkerModule {}

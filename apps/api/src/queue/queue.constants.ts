@@ -17,3 +17,31 @@ export interface ExpireOrderData {
 
 /** BullMQ job ids must not contain ":". UUIDs only use "-". */
 export const expireJobId = (orderId: string) => `expire-${orderId}`;
+
+export const PAYMENTS_QUEUE = 'payments';
+/** Refunds that failed every attempt; kept for a human to look at. */
+export const PAYMENTS_DEAD_LETTER_QUEUE = 'payments-dead-letter';
+
+export const PaymentJob = {
+  /** Ask the gateway for one refund; retried with exponential backoff. */
+  REFUND: 'refund',
+  /** Cancel every order of a cancelled performance, in batches. */
+  CANCEL_PERFORMANCE: 'cancel-performance',
+  /**
+   * Repeating safety net: enqueue refunds whose job was lost and resume
+   * performance cancellations that did not finish.
+   */
+  SWEEP: 'sweep-payments',
+} as const;
+
+export interface RefundJobData {
+  refundId: string;
+}
+
+export interface CancelPerformanceData {
+  performanceId: string;
+}
+
+export const refundJobId = (refundId: string) => `refund-${refundId}`;
+export const cancelPerformanceJobId = (performanceId: string) =>
+  `cancel-${performanceId}`;

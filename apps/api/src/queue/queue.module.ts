@@ -1,7 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Global, Module } from '@nestjs/common';
 import { AppConfigService } from '../config/app-config.service.js';
-import { RESERVATIONS_QUEUE } from './queue.constants.js';
+import {
+  PAYMENTS_DEAD_LETTER_QUEUE,
+  PAYMENTS_QUEUE,
+  RESERVATIONS_QUEUE,
+} from './queue.constants.js';
 
 /** ioredis connection options from a redis:// URL (host, port, password, db). */
 export function redisConnection(url: string) {
@@ -35,7 +39,11 @@ export function redisConnection(url: string) {
         },
       }),
     }),
-    BullModule.registerQueue({ name: RESERVATIONS_QUEUE }),
+    BullModule.registerQueue(
+      { name: RESERVATIONS_QUEUE },
+      { name: PAYMENTS_QUEUE },
+      { name: PAYMENTS_DEAD_LETTER_QUEUE },
+    ),
   ],
   exports: [BullModule],
 })

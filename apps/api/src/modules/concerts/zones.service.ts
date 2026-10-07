@@ -32,6 +32,40 @@ export class ZonesService {
   }
 
   /**
+   * Payment confirmed: held standing tickets become sold. Moves the counts
+   * in one statement; the condition keeps held_count from going negative.
+   */
+  async sellStanding(
+    tx: Prisma.TransactionClient,
+    zoneId: string,
+    quantity: number,
+  ): Promise<boolean> {
+    const changed = await tx.$executeRaw`
+      UPDATE zones
+      SET held_count = held_count - ${quantity},
+          sold_count = sold_count + ${quantity}
+      WHERE id = ${zoneId}::uuid AND held_count >= ${quantity}
+    `;
+    return changed === 1;
+  }
+
+  /**
+   * Gives back standing tickets of a paid order that leaves PAID (performance
+   * cancelled), so sold_count keeps matching the active PAID items (I9).
+   */
+  async unsellStanding(
+    tx: Prisma.TransactionClient,
+    zoneId: string,
+    quantity: number,
+  ): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE zones
+      SET sold_count = sold_count - ${quantity}
+      WHERE id = ${zoneId}::uuid AND sold_count >= ${quantity}
+    `;
+  }
+
+  /**
    * Gives held standing tickets back when an order is released. The
    * held_count >= quantity condition keeps the counter from going negative
    * if a release were ever applied twice.

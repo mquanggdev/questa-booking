@@ -2,6 +2,7 @@ import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { AppConfigService } from '../../config/app-config.service.js';
+import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import { OrdersService, type ReleasedItem } from '../orders/orders.service.js';
@@ -80,30 +81,54 @@ export class ReleaseService {
     return released;
   }
 
+  /**
+   * Releases a PENDING order inside the caller's transaction (used by the
+   * payment and cancellation flows). Call afterCommit() with the result once
+   * the transaction has committed. Returns null if the order was not
+   * PENDING (or not yet overdue, for EXPIRED).
+   */
+  async releaseInTx(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    close: CloseRequest,
+  ): Promise<ReleasedSet | null> {
+    const released = await this.orders.closePending(tx, orderId, close);
+    if (!released) return null;
+    const set = group(released);
+    await this.seats.release(tx, set.seatIds);
+    for (const s of set.standing) {
+      await this.zones.releaseStanding(tx, s.zoneId, s.quantity);
+    }
+    return set;
+  }
+
+  /** Redis bookkeeping once the release has committed in PostgreSQL. */
+  afterCommit(set: ReleasedSet | null): Promise<void> {
+    return set
+      ? this.gate.release(set.seatIds, set.standing)
+      : Promise.resolve();
+  }
+
   private async release(
     orderId: string,
-    close: Parameters<OrdersService['closePending']>[2],
+    close: CloseRequest,
   ): Promise<boolean> {
-    const items = await this.prisma.$transaction(async (tx) => {
-      const released = await this.orders.closePending(tx, orderId, close);
-      if (!released) return null;
-      const { seatIds, standing } = group(released);
-      await this.seats.release(tx, seatIds);
-      for (const s of standing) {
-        await this.zones.releaseStanding(tx, s.zoneId, s.quantity);
-      }
-      return { seatIds, standing };
-    });
-    if (!items) return false;
-    await this.gate.release(items.seatIds, items.standing);
-    return true;
+    const set = await this.prisma.$transaction((tx) =>
+      this.releaseInTx(tx, orderId, close),
+    );
+    await this.afterCommit(set);
+    return set !== null;
   }
 }
 
-function group(items: ReleasedItem[]): {
+export interface ReleasedSet {
   seatIds: string[];
   standing: StandingSelection[];
-} {
+}
+
+type CloseRequest = Parameters<OrdersService['closePending']>[2];
+
+function group(items: ReleasedItem[]): ReleasedSet {
   const seatIds: string[] = [];
   const perZone = new Map<string, number>();
   for (const item of items) {
