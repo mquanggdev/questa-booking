@@ -18,7 +18,7 @@ Nguồn quyết định: [`docs/spec.md`](docs/spec.md). Khi đặc tả thiếu
 
 ## Quy trình
 
-1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **4**.
+1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **5**.
 2. Cuối mỗi giai đoạn: kiểm tra "Định nghĩa hoàn thành" ở mục 10 của đặc tả, rồi **dừng lại báo cáo** cho chủ dự án. Chủ dự án review xong mới gắn tag git.
 3. Giai đoạn 2 cố ý chứa lỗi bán trùng (tag `v0-naive`). Từ giai đoạn 3, mọi kịch bản load test phải cho 0 vi phạm bất biến.
 
@@ -100,7 +100,7 @@ Chạy từ thư mục gốc repo:
 | `pnpm test` | Unit test (không cần DB) |
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
-| `pnpm loadtest <contention\|standing\|browse>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md` |
+| `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md` |
 | `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
 | `pnpm showcase:video <slides.html>` | Dựng video tiếng Việt từ slide (qua `uv`, không cài gì lên hệ thống) |
 | `pnpm --filter @questa/api db:seed` | Xóa sạch DB dev rồi nạp dữ liệu mẫu, ghi token cho k6 vào `load-tests/data/` |

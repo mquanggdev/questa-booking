@@ -8,7 +8,10 @@ Mỗi giai đoạn từ 2 trở đi thêm các dòng mới, không sửa dòng c
   - `contention`: số ghế có từ 2 đơn còn hiệu lực trở lên (bất biến I1).
   - `standing`: số vé phát ra vượt sức chứa của khu (bất biến I9).
   - `quota`: số tài khoản giữ nhiều vé hơn giới hạn (bất biến I10).
-- **Lỗi** là tỉ lệ response 5xx. Từ giai đoạn 2, hệ thống quá tải trả **503** (`Retry-After`), không trả 500.
+  - `full-flow`, `webhook-chaos`: tổng số vi phạm I2, I4, I8, I9, I12, đếm trong DB bằng `load-tests/verify/payments.sql`.
+  - `check-in`: số vé được nhận quá một lần (I6), so số lượt quét được chấp nhận với số vé đã check-in trong DB.
+- **Lỗi** là tỉ lệ response 5xx. Từ giai đoạn 2, hệ thống quá tải trả **503** (`Retry-After`), không trả 500. Trong các kịch bản thanh toán, mọi 4xx (hết vé, vé đã dùng) là kết quả hợp lệ; `IPN` luôn trả HTTP 200 kèm `RspCode`.
+- `check-in` có phần setup mua 100 vé theo lô (khoảng 400 request, 1–2 giây), được tính chung vào RPS và độ trễ.
 - **p50 / p95 / p99** là độ trễ của mọi request trong kịch bản, kể cả request bị từ chối.
 - Mỗi lượt là một khách khác nhau, có token do seed tạo sẵn. Mọi lượt bắt đầu cùng lúc.
 
@@ -17,7 +20,7 @@ Mỗi giai đoạn từ 2 trở đi thêm các dòng mới, không sửa dòng c
 ```bash
 docker compose up -d --build
 pnpm --filter @questa/api db:seed
-pnpm loadtest contention          # hoặc standing, quota, browse
+pnpm loadtest contention          # hoặc standing, quota, browse, full-flow, webhook-chaos, check-in
 pnpm loadtest contention --phase 3 --record "ghi chú"   # thêm một dòng vào bảng
 ```
 
@@ -48,7 +51,7 @@ pnpm loadtest contention --phase 3 --record "ghi chú"   # thêm một dòng và
 | 3 | `v2-hold` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa optimistic, gate tắt, pool 10 | contention: 5000 lượt (50 VU) | **0** ghế (+0 vé thừa) | 150 | 321 ms | 431 ms | 512 ms | 0.00 % | ĐO LẠI (thay 3 dòng 50 VU ở trên): so sánh khóa ghế, bộ lọc Redis tắt, đã khởi động trước. 3 lần: xem ADR-0008. |
 | 2 | `v0-naive` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); pool 10, chờ 2 s | standing: 5000 lượt (1000 VU) | **606–940** vé vượt sức chứa (1.106–1.440/500) | 209 | 4373 ms | 6310 ms | – | 71–78 % | ĐO LẠI thử nghiệm pool của giai đoạn 2, chạy đúng code `v0-naive` trên database riêng có schema của nó (2 lần). |
 | 2 | `v0-naive` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); pool 20, chờ 10 s | standing: 5000 lượt (1000 VU) | **4.500** vé vượt sức chứa (5.000/500) | 104 | 9296 ms | 10297 ms | – | 0.00 % | ĐO LẠI: pool lớn hơn làm thông lượng giảm một nửa, p50 gấp đôi (hot row: mọi transaction xếp hàng trên một dòng), hết 503 nhưng gần như mọi request đều được bán. |
-| 5 | `v2-hold-5-g5c038bd-dirty` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | check-in: 5000 lượt quét 100 vé | **0** vé check-in quá 1 lần (100 vé, 100 lượt nhận) | 267 | 3211 ms | 6513 ms | 7669 ms | 0.00 % | trước tối ưu: UPDATE rồi đọc lại vé bằng Prisma kèm quan hệ |
-| 5 | `v2-hold-5-g5c038bd-dirty` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | check-in: 5000 lượt quét 100 vé | **0** vé check-in quá 1 lần (100 vé, 100 lượt nhận) | 365 | 1962 ms | 4647 ms | 7555 ms | 0.00 % | sau tối ưu: check-in thành công 1 câu lệnh (CTE), bị từ chối 2 |
-| 5 | `v2-hold-5-g5c038bd-dirty` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | webhook-chaos: 500 lượt (250 VU) | **0** vi phạm I2/I4/I8/I9/I12 (250 đơn PAID, 250 đơn hoàn tiền) | 244 | 1021 ms | 2561 ms | 3134 ms | 0.00 % | IPN trùng ×5, sai số tiền, chữ ký giả, IPN sau khi hủy đơn, hủy đua với IPN |
-| 5 | `v2-hold-5-g5c038bd-dirty` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | full-flow: 5000 lượt (1000 VU) | **0** vi phạm I2/I4/I8/I9/I12 (500 đơn PAID, 0 đơn hoàn tiền) | 355 | 93 ms | 5762 ms | 6819 ms | 4.82 % | giữ → thanh toán giả lập (cổng tự gửi lại IPN khi 99) → xem vé |
+| 5 | `5e086ce` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | check-in: 5000 lượt quét 100 vé | **0** vé check-in quá 1 lần (100 vé, 100 lượt nhận) | 267 | 3211 ms | 6513 ms | 7669 ms | 0.00 % | trước tối ưu: UPDATE rồi đọc lại vé bằng Prisma kèm quan hệ |
+| 5 | `af61666` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | check-in: 5000 lượt quét 100 vé | **0** vé check-in quá 1 lần (100 vé, 100 lượt nhận) | 365 | 1962 ms | 4647 ms | 7555 ms | 0.00 % | sau tối ưu: check-in thành công 1 câu lệnh (CTE), bị từ chối 2 |
+| 5 | `af61666` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | webhook-chaos: 500 lượt (250 VU) | **0** vi phạm I2/I4/I8/I9/I12 (250 đơn PAID, 250 đơn hoàn tiền) | 244 | 1021 ms | 2561 ms | 3134 ms | 0.00 % | IPN trùng ×5, sai số tiền, chữ ký giả, IPN sau khi hủy đơn, hủy đua với IPN |
+| 5 | `af61666` | R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB); khóa conditional, gate bật, pool 10 | full-flow: 5000 lượt (1000 VU) | **0** vi phạm I2/I4/I8/I9/I12 (500 đơn PAID, 0 đơn hoàn tiền) | 355 | 93 ms | 5762 ms | 6819 ms | 4.82 % | giữ → thanh toán giả lập (cổng tự gửi lại IPN khi 99) → xem vé |

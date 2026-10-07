@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 4: bộ lọc Redis trước PostgreSQL (thông lượng tăng khoảng 4 lần khi tranh chấp), vé tự hết hạn, hủy đơn, và tiến trình worker riêng cho việc chạy nền.
+> **Trạng thái:** Xong giai đoạn 5: thanh toán qua IPN có chữ ký (VNPay sandbox, cùng một cổng giả lập nói đúng giao thức đó), hoàn tiền có retry bằng BullMQ và dead letter queue, hủy đêm diễn kèm hoàn tiền hàng loạt, vé QR, và check-in chỉ nhận mỗi vé đúng một lần.
 
 ## Bài toán
 
@@ -29,6 +29,8 @@ curl localhost:3000/api/v1/health/ready
 ```
 
 `docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API và tiến trình worker chạy nền.
+
+Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_PROVIDER=fake`), nên không cần tài khoản nào. Muốn trả tiền trên VNPay sandbox thật, xem [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md).
 
 - Tài liệu API (Swagger): <http://localhost:3000/api/docs>
 - Nạp dữ liệu mẫu (xóa sạch database dev):
@@ -69,18 +71,22 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | 3 | so sánh 3 cách khóa ghế | đều đúng, chênh nhau khoảng 10% (đã đo lại, xem dưới) ([ADR-0008](docs/adr/0008-seat-and-standing-locking.md)) |
 | **4: bộ lọc Redis tắt → bật** | 5.000 khách, 100 ghế | 159–211 → **701–815 req/s**, p50 ~5 s → **11–456 ms**, lỗi 503 → **0**; vẫn 0 ghế bán trùng |
 | 4 | 5.000 khách, 500 vé đứng | ~200 → **~510 req/s**, p50 ~4,5 s → **~25 ms** |
+| **5: thanh toán** | IPN hỗn loạn: mỗi IPN gửi 5 lần song song, sai số tiền, chữ ký giả, tiền về sau khi đơn đã hủy, hủy đơn đua với IPN | **0 vi phạm** I2/I4/I8/I9/I12; 500 thanh toán được xác nhận đúng một lần, 250 đơn được hoàn tiền |
+| 5 | 5.000 khách: giữ vé → thanh toán → nhận vé | cả 500 vé đã giữ đều được thanh toán và phát vé, 0 vi phạm; khoảng 6% lượt giữ vé nhận 503 khi quá tải |
+| 5 | 5.000 lượt quét đồng thời trên 100 vé | đúng **100 lượt được nhận**; 267 → **365 req/s** sau khi gộp lượt quét thành công vào một câu lệnh |
 
 > Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
 ```bash
 pnpm --filter @questa/api db:seed
-pnpm loadtest contention      # hoặc: standing, quota, browse
+pnpm loadtest contention      # hoặc: standing, quota, browse, full-flow, webhook-chaos, check-in
 ```
 
 ## Tài liệu
 
 - [Đặc tả](docs/spec.md)
 - [Các quyết định kiến trúc (ADR)](docs/adr/)
+- [Thanh toán trên VNPay sandbox](docs/vnpay-sandbox.md)
 
 ## Giấy phép
 

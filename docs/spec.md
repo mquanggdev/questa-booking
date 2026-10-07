@@ -245,15 +245,17 @@ Tất cả đọc từ biến môi trường.
 
 ### Luồng B: Thanh toán
 
-1. Khách yêu cầu thanh toán cho đơn `PENDING`. Hệ thống tạo bản ghi `payments` và trả về URL của cổng thanh toán. Thời hạn của URL (`vnp_ExpireDate`) bằng `expires_at` của đơn.
+1. Khách yêu cầu thanh toán cho đơn `PENDING`. Hệ thống tạo bản ghi `payments` và trả về URL của cổng thanh toán. Thời hạn của URL (`vnp_ExpireDate`) bằng `expires_at` của đơn. Mỗi lần yêu cầu tạo một payment với `txnRef` mới; nếu khách trả hai lần, payment đến sau được hoàn tiền.
 2. Cổng thanh toán gọi IPN. Hệ thống xác minh chữ ký trước khi làm gì khác. Return URL (qua trình duyệt) chỉ để hiển thị, không bao giờ đổi trạng thái đơn.
 3. Nếu `provider_txn_id` đã được xử lý, trả về kết quả cũ và dừng.
 4. Kiểm tra số tiền trong IPN bằng `total_amount` của đơn; sai thì từ chối.
 5. Trong một transaction: nếu đơn còn `PENDING` thì chuyển đơn sang `PAID`, ghế sang `SOLD`, tạo vé, ghi sự kiện `order.paid` vào `outbox_events`.
-6. Nếu đơn đã `EXPIRED` hoặc `CANCELLED`: ghi nhận thanh toán, chuyển đơn sang `REFUND_PENDING`, tạo job hoàn tiền. Không bao giờ lấy lại ghế cho đơn đã đóng.
+6. Nếu đơn đã `EXPIRED` hoặc `CANCELLED`: ghi nhận thanh toán, chuyển đơn sang `REFUND_PENDING`, tạo job hoàn tiền. Không bao giờ lấy lại ghế cho đơn đã đóng. Đơn còn `PENDING` nhưng đã quá hạn cộng ân hạn (chưa job nào kịp đóng), hoặc đêm diễn đã bị hủy, thì được đóng ngay trong transaction này rồi xử lý như trên.
 7. IPN được xử lý đồng bộ và trả mã `RspCode` theo chuẩn VNPay. Nếu VNPay không nhận được `00`, nó tự gửi lại; nhờ bước 3, việc gửi lại an toàn. Riêng việc hoàn tiền mới đi qua BullMQ (retry với backoff, quá số lần thì vào dead letter queue).
 
 Thời gian ân hạn tránh trường hợp khách trả tiền ở giây cuối nhưng IPN về sau khi đơn đã hết hạn.
+
+Chi tiết thứ tự kiểm tra, thứ tự khóa và mã `RspCode`: [ADR-0012](adr/0012-payments-ipn-and-refunds.md). Hướng dẫn dùng VNPay sandbox: [vnpay-sandbox.md](vnpay-sandbox.md).
 
 ### Luồng C: Hết hạn giữ vé
 
@@ -281,8 +283,10 @@ Chỉ tài khoản đã kích hoạt mới giữ được vé. Đợt `GENERAL` 
 
 1. Ban tổ chức hủy đêm diễn; `performances.status` chuyển sang `CANCELLED` và hệ thống ngừng nhận giữ vé.
 2. Mọi đơn `PENDING` chuyển sang `CANCELLED`, vé đang giữ được nhả.
-3. Mọi đơn `PAID` chuyển sang `REFUND_PENDING`; mỗi đơn có một job hoàn tiền riêng trong BullMQ.
-4. Khi cổng thanh toán xác nhận, đơn chuyển sang `REFUNDED`, vé bị vô hiệu, sự kiện `order.refunded` được ghi vào outbox.
+3. Mọi đơn `PAID` chuyển sang `REFUND_PENDING`; mỗi payment đã thành công có một job hoàn tiền riêng trong BullMQ. Trong cùng transaction, vé của đơn bị vô hiệu ngay, ghế về `AVAILABLE` và bộ đếm vé đứng giảm, để I2 và I9 luôn đúng (đêm diễn đã hủy nên không ai mua lại được).
+4. Khi cổng thanh toán xác nhận, đơn chuyển sang `REFUNDED` và sự kiện `order.refunded` được ghi vào outbox (giai đoạn 8).
+
+Bước 2 và 3 chạy trong worker, mỗi đơn một transaction ngắn. Một job quét định kỳ chạy lại phần còn dở nếu worker dừng giữa chừng ([ADR-0012](adr/0012-payments-ipn-and-refunds.md)).
 
 ### Luồng D: Soát vé
 
@@ -356,6 +360,8 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | POST | `/orders/:id/cancel` | `CUSTOMER` | Hủy đơn `PENDING` |
 | POST | `/orders/:id/pay` | `CUSTOMER` | Tạo thanh toán, trả URL cổng thanh toán |
 | GET | `/payments/ipn/:provider` | Chữ ký của cổng | Nhận kết quả thanh toán (VNPay gọi IPN bằng GET) |
+| GET | `/payments/return/:provider` | Công khai | Trình duyệt quay về từ cổng; chỉ hiển thị, không đổi trạng thái |
+| GET, POST | `/payments/fake/checkout`, `/payments/fake/complete` | Công khai, chỉ khi bật cổng giả lập | Trang thanh toán của cổng giả lập, gửi IPN đã ký như VNPay |
 | GET | `/tickets` | `CUSTOMER` | Vé của tôi kèm mã QR |
 | POST | `/tickets/check-in` | `STAFF` | Check-in bằng mã vé |
 | GET | `/health` | Công khai | Liveness: tiến trình còn sống |
@@ -395,7 +401,9 @@ BullMQ xử lý công việc nền có hẹn giờ và retry bên trong ứng d�
 | `reservations` | `expire-order` | Delayed, `jobId` bằng `orderId` để không tạo trùng |
 | `reservations` | `sweep-expired` | Lặp lại mỗi phút |
 | `reservations` | `reconcile-standing` | Đối chiếu bộ đếm khu đứng Redis với DB |
-| `payments` | `refund` | Retry backoff lũy thừa, tối đa 5 lần, sau đó vào DLQ |
+| `payments` | `refund` | Retry backoff lũy thừa, tối đa 5 lần, sau đó vào DLQ (`payments-dead-letter`) |
+| `payments` | `cancel-performance` | Hủy đơn chưa trả và tạo hoàn tiền cho đơn đã trả của một đêm diễn |
+| `payments` | `sweep-payments` | Lặp lại mỗi phút: đưa lại vào queue các refund bị sót, chạy tiếp việc hủy đêm diễn còn dở |
 | `waiting-room` | `admit-batch` | Lặp lại theo chu kỳ cấu hình |
 
 ### Kafka
@@ -466,7 +474,7 @@ Laptop: AMD Ryzen 5 4600H (6 nhân, 12 luồng), 16 GB RAM, Windows 11, Docker D
 | `standing` | 5.000 khách (1.000 VU × 5 lượt) cùng tranh 500 vé khu đứng | Không bán quá sức chứa (I9) |
 | `quota` | 20 tài khoản, mỗi tài khoản 50 request giữ vé song song | Không vượt giới hạn mua (I10) |
 | `browse` | Đọc danh sách và chi tiết đêm diễn | Hiệu quả của cache |
-| `full-flow` | Giữ vé, thanh toán giả lập, nhận vé | Luồng đầy đủ, I2, I7 |
+| `full-flow` | Giữ vé, thanh toán giả lập, nhận vé | Luồng đầy đủ, I2, I9 (I7 từ giai đoạn 8) |
 | `webhook-chaos` | IPN gửi trùng, gửi trễ, gửi sau khi đơn hết hạn, sai số tiền | I4, I8, I12 |
 | `check-in` | Cùng một mã vé quét đồng thời nhiều lần | I6 |
 | `on-sale` | Tải tăng vọt lúc mở bán trên đêm diễn 10.000 vé | Thông lượng, độ trễ, hàng chờ ảo |
