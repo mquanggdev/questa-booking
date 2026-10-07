@@ -41,4 +41,7 @@ export const testEnv = {
   REFRESH_TOKEN_TTL_DAYS: '7',
   COOKIE_SECURE: 'false',
   SWAGGER_ENABLED: 'false',
+  // Fast worker schedules so tests do not wait a minute for the sweep.
+  SWEEP_EVERY_MS: '1000',
+  RECONCILE_EVERY_MS: '60000',
 } satisfies Record<string, string>;

@@ -7,6 +7,12 @@ import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
 import { Role } from '../../src/generated/prisma/client.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { Redis } from 'ioredis';
+
+// Points at the test Redis database (REDIS_URL from vitest.config.e2e.ts).
+export const testRedis = new Redis(process.env.REDIS_URL ?? '', {
+  lazyConnect: true,
+});
 
 export interface TestApp {
   app: INestApplication<App>;
@@ -28,12 +34,19 @@ export async function createTestApp(): Promise<TestApp> {
     app,
     prisma: app.get(PrismaService),
     http: () => request(app.getHttpServer()),
-    close: () => app.close(),
+    close: async () => {
+      await app.close();
+      testRedis.disconnect();
+    },
   };
 }
 
-/** Empties every application table; migrations history is kept. */
+/**
+ * Empties every application table (migrations history is kept) and the test
+ * Redis database (gate keys, queued jobs), so tests never see each other's state.
+ */
 export async function resetDatabase(prisma: PrismaService): Promise<void> {
+  await testRedis.flushdb();
   const rows = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'
