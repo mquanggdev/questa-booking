@@ -64,6 +64,7 @@ docker compose up -d --build
 
 | Hiện tượng | Nguyên nhân thường gặp |
 | --- | --- |
+| VNPay mở trang lỗi `Error.html?code=71`: "Website này chưa được phê duyệt" | Mã website chưa được duyệt hoặc đã ngừng hoạt động trên sandbox (gặp khi dùng lại mã của một dự án cũ). Đăng ký mã mới ở bước 1 |
 | VNPay báo "Sai chữ ký" ngay khi mở trang thanh toán | Sai `VNPAY_HASH_SECRET`, hoặc secret còn dấu cách hay dấu ngoặc thừa |
 | Đã trả tiền nhưng đơn vẫn `PENDING` | Chưa khai báo URL IPN, tunnel đã đổi địa chỉ, hoặc API không chạy |
 | Log API có `Rejected an IPN with a bad signature` | Có request IPN không do VNPay gửi, hoặc `.env` dùng secret của một mã website khác |
