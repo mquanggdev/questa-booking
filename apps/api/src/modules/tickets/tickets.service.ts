@@ -118,26 +118,33 @@ export class TicketsService {
    * Flow D. One conditional UPDATE: of any number of concurrent scans of the
    * same code, exactly one matches `checked_in_at IS NULL` (I6). A voided
    * ticket never matches either.
+   *
+   * An accepted scan is that single statement (it also returns what the gate
+   * shows); a rejected one reads the ticket once to say why. At the gate most
+   * scans of a busy code are rejections, so both paths stay short.
    */
   async checkIn(code: string, staffId: string): Promise<CheckInResponseDto> {
-    const rows = await this.prisma.$queryRaw<
-      { id: string; checkedInAt: Date }[]
-    >`
-      UPDATE tickets SET checked_in_at = now(), checked_in_by = ${staffId}::uuid
-      WHERE code = ${code} AND checked_in_at IS NULL AND voided_at IS NULL
-      RETURNING id, checked_in_at AS "checkedInAt"
+    const [accepted] = await this.prisma.$queryRaw<CheckInResponseDto[]>`
+      WITH hit AS (
+        UPDATE tickets SET checked_in_at = now(), checked_in_by = ${staffId}::uuid
+        WHERE code = ${code} AND checked_in_at IS NULL AND voided_at IS NULL
+        RETURNING id, order_item_id, checked_in_at
+      )
+      SELECT hit.id AS "ticketId", hit.checked_in_at AS "checkedInAt",
+             z.name AS "zoneName",
+             CASE WHEN s.id IS NULL THEN NULL
+                  ELSE s.row_label || s.seat_number END AS "seatLabel"
+      FROM hit
+      JOIN order_items oi ON oi.id = hit.order_item_id
+      JOIN zones z ON z.id = oi.zone_id
+      LEFT JOIN seats s ON s.id = oi.seat_id
     `;
+    if (accepted) return accepted;
+
+    // The UPDATE matched nothing: say exactly why.
     const ticket = await this.prisma.ticket.findUnique({
       where: { code },
-      select: {
-        id: true,
-        checkedInAt: true,
-        checkedInBy: true,
-        voidedAt: true,
-        orderItem: {
-          select: { zone: { select: { name: true } }, seat: seatSelect },
-        },
-      },
+      select: { checkedInAt: true, checkedInBy: true, voidedAt: true },
     });
     if (!ticket) {
       throw new AppException(
@@ -146,15 +153,6 @@ export class TicketsService {
         'No ticket has this code',
       );
     }
-    if (rows[0]) {
-      return {
-        ticketId: ticket.id,
-        checkedInAt: rows[0].checkedInAt,
-        zoneName: ticket.orderItem.zone.name,
-        seatLabel: seatLabel(ticket.orderItem.seat),
-      };
-    }
-    // The UPDATE matched nothing: say exactly why.
     if (ticket.voidedAt) {
       throw new AppException(
         HttpStatus.CONFLICT,
