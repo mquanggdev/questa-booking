@@ -5,6 +5,11 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { OrderResponseDto } from './dto/order.dto.js';
 
+export interface ReleasedItem {
+  zoneId: string;
+  seatId: string | null;
+}
+
 export interface NewOrderItem {
   zoneId: string;
   seatId: string | null;
@@ -104,6 +109,68 @@ export class OrdersService {
       },
       select: orderSelect,
     });
+  }
+
+  /**
+   * PENDING -> EXPIRED or CANCELLED, and releases every ticket of the order.
+   * The transition is a conditional UPDATE: of an expiry job, the sweep, a
+   * cancel and (phase 5) a payment racing on one order, exactly one wins;
+   * the others match no row and get null.
+   *
+   * - expire: only once expires_at + graceSeconds has passed.
+   * - cancel: only by the owner (userId).
+   */
+  async closePending(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    close:
+      | { to: 'EXPIRED'; graceSeconds: number }
+      | { to: 'CANCELLED'; userId: string },
+  ): Promise<ReleasedItem[] | null> {
+    const changed =
+      close.to === 'EXPIRED'
+        ? await tx.$executeRaw`
+            UPDATE orders SET status = 'EXPIRED', updated_at = now()
+            WHERE id = ${orderId}::uuid
+              AND status = 'PENDING'
+              AND expires_at + ${close.graceSeconds} * interval '1 second' <= now()
+          `
+        : await tx.$executeRaw`
+            UPDATE orders SET status = 'CANCELLED', updated_at = now()
+            WHERE id = ${orderId}::uuid
+              AND status = 'PENDING'
+              AND user_id = ${close.userId}::uuid
+          `;
+    if (changed === 0) {
+      return null;
+    }
+    // released_at frees the seat for the partial unique index (I1).
+    return tx.$queryRaw<ReleasedItem[]>`
+      UPDATE order_items SET released_at = now()
+      WHERE order_id = ${orderId}::uuid AND released_at IS NULL
+      RETURNING zone_id AS "zoneId", seat_id AS "seatId"
+    `;
+  }
+
+  /** PENDING orders past expires_at + grace, oldest first. */
+  async findOverdue(graceSeconds: number, limit: number): Promise<string[]> {
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id FROM orders
+      WHERE status = 'PENDING'
+        AND expires_at + ${graceSeconds} * interval '1 second' <= now()
+      ORDER BY expires_at
+      LIMIT ${limit}
+    `;
+    return rows.map((r) => r.id);
+  }
+
+  /** Status of one order, or null (used to explain why a cancel did nothing). */
+  async statusOf(userId: string, orderId: string): Promise<string | null> {
+    const order = await this.prisma.order.findFirst({
+      where: { id: orderId, userId },
+      select: { status: true },
+    });
+    return order?.status ?? null;
   }
 
   listForUser(userId: string): Promise<OrderResponseDto[]> {

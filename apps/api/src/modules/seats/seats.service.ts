@@ -219,6 +219,21 @@ export class SeatsService {
     return rows.map((r) => ({ id: r.id, zoneId: r.zone_id }));
   }
 
+  /**
+   * Makes the seats of a released order sellable again. Only HELD seats are
+   * touched, so a release applied twice changes nothing.
+   */
+  async release(
+    tx: Prisma.TransactionClient,
+    seatIds: string[],
+  ): Promise<void> {
+    if (seatIds.length === 0) return;
+    await tx.$executeRaw`
+      UPDATE seats SET status = 'AVAILABLE'
+      WHERE id = ANY(${seatIds}::uuid[]) AND status = 'HELD'
+    `;
+  }
+
   /** Throws the right error for the seats that could not be held. */
   private async explainMiss(
     tx: Prisma.TransactionClient,

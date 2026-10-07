@@ -2,9 +2,52 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import type { Prisma } from '../../generated/prisma/client.js';
+import { PrismaService } from '../../prisma/prisma.service.js';
 
 @Injectable()
 export class ZonesService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Tickets still sellable per STANDING zone, as PostgreSQL sees it now. */
+  async standingAvailability(zoneIds: string[]): Promise<Map<string, number>> {
+    const zones = await this.prisma.zone.findMany({
+      where: { id: { in: zoneIds }, type: 'STANDING' },
+      select: { id: true, capacity: true, heldCount: true, soldCount: true },
+    });
+    return new Map(
+      zones.map((z) => [
+        z.id,
+        Math.max(z.capacity - z.heldCount - z.soldCount, 0),
+      ]),
+    );
+  }
+
+  /** Every STANDING zone id (for the reconcile job). */
+  async standingZoneIds(): Promise<string[]> {
+    const zones = await this.prisma.zone.findMany({
+      where: { type: 'STANDING' },
+      select: { id: true },
+    });
+    return zones.map((z) => z.id);
+  }
+
+  /**
+   * Gives held standing tickets back when an order is released. The
+   * held_count >= quantity condition keeps the counter from going negative
+   * if a release were ever applied twice.
+   */
+  async releaseStanding(
+    tx: Prisma.TransactionClient,
+    zoneId: string,
+    quantity: number,
+  ): Promise<void> {
+    await tx.$executeRaw`
+      UPDATE zones
+      SET held_count = held_count - ${quantity}
+      WHERE id = ${zoneId}::uuid AND held_count >= ${quantity}
+    `;
+  }
+
   /**
    * Holds standing tickets with one atomic statement: the capacity check and
    * the increment happen together, on the latest committed counters, so two
