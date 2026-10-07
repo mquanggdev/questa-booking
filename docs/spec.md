@@ -235,7 +235,7 @@ Tất cả đọc từ biến môi trường.
 
 1. Kiểm tra đêm diễn đang trong một đợt mở bán. Nếu là đợt bán trước, tài khoản phải đã kích hoạt mã ưu tiên. Kiểm tra vé vào cửa của hàng chờ ảo còn hiệu lực (nếu bật).
 2. Nếu `Idempotency-Key` đã tồn tại cho người dùng này, trả về đơn cũ. Nếu hai request cùng key đến song song, request thua sẽ đụng ràng buộc unique; lỗi này được bắt lại và trả về đơn đã có, không trả 500.
-3. Giữ chỗ trong Redis bằng một Lua script, làm cổng lọc mềm để chặn bớt tải trước khi vào DB. Với ghế ngồi: đặt key `seat:hold:{seatId}` với `NX` và TTL bằng thời gian giữ cộng thời gian ân hạn. Với vé đứng: giảm bộ đếm số vé còn lại của khu, không cho xuống dưới 0. Chỉ cần một phần thất bại thì không giữ gì cả.
+3. Giữ chỗ trong Redis bằng một Lua script, làm cổng lọc mềm để chặn bớt tải trước khi vào DB, chạy **trước mọi truy vấn DB**. Với ghế ngồi: key `seat:hold:{seatId}` (TTL ngắn khi đang chạy, kéo dài sau khi commit). Với vé đứng: giảm bộ đếm số vé còn lại của khu, không cho xuống dưới 0. Chỉ cần một phần thất bại thì không giữ gì cả. Redis lỗi thì bỏ qua cổng (fail-open), PostgreSQL vẫn quyết định ([ADR-0010](adr/0010-redis-gate-and-expiry.md)).
 4. Mở transaction và lấy `pg_advisory_xact_lock` theo (`user_id`, `performance_id`). Đếm số vé tài khoản đang giữ và đã mua cho đêm diễn; từ chối nếu vượt giới hạn.
 5. Trong transaction đó, với ghế ngồi: `UPDATE seats SET status = 'HELD' WHERE ... AND status = 'AVAILABLE'` rồi kiểm tra số dòng (đã so sánh với `FOR UPDATE` và optimistic theo `xmin`, [ADR-0008](adr/0008-seat-and-standing-locking.md)). Với vé đứng: câu `UPDATE zones` có điều kiện, chạy cuối transaction để giữ khóa dòng nóng ngắn nhất.
 6. Tạo đơn `PENDING` với `expires_at` và một dòng `order_items` cho mỗi vé.
@@ -557,8 +557,9 @@ Hoàn thành khi: kịch bản `contention` cho 0 ghế bán trùng qua 5 lần 
 
 - Giữ chỗ trong Redis bằng Lua script, đặt trước bước ghi database.
 - Đơn có `expires_at`; job `expire-order`, `sweep-expired` và `reconcile-standing`.
-- Tách tiến trình worker (`worker.ts`).
-- API hủy đơn.
+- Tách tiến trình worker (`worker.ts`, service `worker` trong docker-compose).
+- API hủy đơn `POST /orders/:id/cancel`.
+- Cờ `RESERVATION_GATE_ENABLED` để đo có và không có cổng Redis.
 
 Hoàn thành khi: test chứng minh ghế tự về `AVAILABLE` sau khi hết hạn, kể cả khi worker bị tắt và bật lại giữa chừng (I3); benchmark so sánh với giai đoạn 3. Nếu Redis không cải thiện số liệu, README ghi rõ điều đó.
 

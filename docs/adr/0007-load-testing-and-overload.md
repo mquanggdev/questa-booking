@@ -1,6 +1,6 @@
 # ADR-0007: Cách load test, và trả 503 khi quá tải
 
-- Trạng thái: Đã chấp nhận
+- Trạng thái: Đã chấp nhận (thử nghiệm pool đã được đo lại ngày 2026-10-07, xem ADR-0011)
 - Ngày: 2026-10-03
 - Giai đoạn: 2
 
@@ -33,7 +33,7 @@ Giai đoạn 2 cần một con số baseline đáng tin: bản ngây thơ bán t
 | --- | --- |
 | 5.000 VU đồng thời như đặc tả ban đầu | Mỗi VU tốn bộ nhớ riêng. Docker trên máy đo chỉ có khoảng 7,7 GB. 1.000 VU × 5 lượt vẫn cho 5.000 khách khác nhau, và 1.000 request đến cùng một lúc là đủ để lộ lỗi |
 | Chạy k6 trên Windows, gọi `localhost:3100` | Qua thêm một lớp chuyển cổng của Docker Desktop, độ trễ đo được không phải của API |
-| Tăng pool và thời gian chờ cho đến khi hết lỗi | Đã thử pool 20, chờ 10 s: tỉ lệ lỗi **còn tăng**. Lý do là hot row: mọi request giữ vé đứng cùng khóa **một dòng** `zones`, nên transaction xếp hàng và giữ kết nối rất lâu. Pool to hơn chỉ làm hàng đợi dài hơn. Cách chữa thật là rút ngắn transaction (giai đoạn 3) và giới hạn lượng người vào (hàng chờ ảo, giai đoạn 7b) |
+| Tăng pool và thời gian chờ cho đến khi hết lỗi | Đã thử pool 20, chờ 10 s, đo lại đúng cách ở giai đoạn 4 ([ADR-0011](0011-benchmark-config-integrity.md)). Hết lỗi 503, nhưng **thông lượng giảm một nửa** (209 → 104 req/s) và **p50 gấp đôi** (4,4 → 9,3 s). Lý do là hot row: mọi request giữ vé đứng cùng khóa **một dòng** `zones`, nên transaction xếp hàng lần lượt, và pool to hơn chỉ làm hàng đợi dài hơn. Cách chữa thật là rút ngắn transaction (giai đoạn 3), lọc bớt trước DB (giai đoạn 4) và giới hạn lượng người vào (hàng chờ ảo, giai đoạn 7b) |
 | Để lỗi 500 như cũ | 500 nghĩa là "server hỏng", client không nên thử lại. Thực tế server chỉ đang bận, nên 503 kèm `Retry-After` mới đúng |
 
 ## Hệ quả

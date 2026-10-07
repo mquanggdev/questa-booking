@@ -1,6 +1,6 @@
 # ADR-0008: Chống bán trùng ngay tại database (ghế ngồi và vé đứng)
 
-- Trạng thái: Đã chấp nhận
+- Trạng thái: Đã chấp nhận (so sánh 3 cách đã được đo lại ngày 2026-10-07, xem ADR-0011)
 - Ngày: 2026-10-05
 - Giai đoạn: 3
 
@@ -60,12 +60,14 @@ Cả 3 cách đều được cài trong `SeatsService.hold()`. Chọn cách nào
 | `pessimistic` | `SELECT ... ORDER BY id FOR UPDATE`, kiểm tra trong code, rồi `UPDATE` | 2 |
 | `optimistic` | Đọc `xmin` (phiên bản dòng có sẵn của PostgreSQL), rồi `UPDATE ... WHERE xmin = <đã đọc>` | 2 |
 
-**Kết quả đo** (5.000 lượt; cả 3 cách đều cho **0 ghế bán trùng** ở mọi lần chạy):
+**Kết quả đo** (5.000 lượt; cả 3 cách đều cho **0 ghế bán trùng** ở mọi lần chạy).
+
+> **Đính chính (2026-10-07):** lần so sánh đầu tiên không hợp lệ. `docker compose run k6` đã tạo lại API với cấu hình mặc định, nên cả 3 "cách" thực ra đều chạy `conditional` ([ADR-0011](0011-benchmark-config-integrity.md)). Bảng dưới đây là lần **đo lại**: bộ lọc Redis tắt để chỉ đo riêng cơ chế khóa ở DB, và cấu hình được đọc từ container trước và sau mỗi lần chạy.
 
 | Tải | conditional | pessimistic | optimistic |
 | --- | --- | --- | --- |
-| 1.000 VU (pool nghẽn) | 182–233 req/s | 170–228 req/s | 157–187 req/s |
-| 50 VU, đã khởi động trước | 158–185 req/s, p95 349–471 ms | 150–172 req/s, p95 372–548 ms | 145–174 req/s, p95 387–468 ms |
+| 50 VU, đã khởi động trước (3 lần) | 165–173 req/s, p95 322–348 ms | 168–183 req/s, p95 317–338 ms | 165–182 req/s, p95 320–382 ms |
+| 1.000 VU, pool nghẽn (2 lần) | 197–211 req/s, 2.057–2.457 lỗi 503 | 186–214 req/s, 729–1.727 lỗi 503 | 190–200 req/s, 818–1.262 lỗi 503 |
 
 **Kết luận:** chênh lệch giữa 3 cách **nhỏ hơn mức nhiễu của máy đo**, khoảng ±15% giữa các lần chạy trên cùng một laptop. Benchmark không chỉ ra được cách nào nhanh hơn. Vì vậy mình chọn `conditional` dựa trên thiết kế:
 - **Ít lần gọi DB nhất** (1 so với 2), và không có bước "đọc trước" nào phải bảo vệ.

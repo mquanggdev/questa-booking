@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 3: chính PostgreSQL từ chối bán trùng (UPDATE có điều kiện, partial unique index, CHECK constraint, advisory lock, Idempotency-Key). 0 ghế bán trùng ở mọi lần chạy.
+> **Trạng thái:** Xong giai đoạn 4: bộ lọc Redis trước PostgreSQL (thông lượng tăng khoảng 4 lần khi tranh chấp), vé tự hết hạn, hủy đơn, và tiến trình worker riêng cho việc chạy nền.
 
 ## Bài toán
 
@@ -28,7 +28,7 @@ docker compose up -d --build
 curl localhost:3000/api/v1/health/ready
 ```
 
-`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API.
+`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API và tiến trình worker chạy nền.
 
 - Tài liệu API (Swagger): <http://localhost:3000/api/docs>
 - Nạp dữ liệu mẫu (xóa sạch database dev):
@@ -66,7 +66,11 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | **3: bảo vệ ở database** | 5.000 khách, 100 ghế | **0 ghế bán trùng qua 5 lần chạy liên tiếp**, đúng 100 vé |
 | 3 | 5.000 khách, 500 vé đứng | đúng **500** vé, bộ đếm khớp |
 | 3 | 20 tài khoản × 50 request song song, giới hạn 6 | đúng **6 vé mỗi tài khoản** (tổng 120) |
-| 3 | so sánh 3 cách khóa ghế | đều đúng; chênh lệch nằm trong mức nhiễu giữa các lần chạy ([ADR-0008](docs/adr/0008-seat-and-standing-locking.md)) |
+| 3 | so sánh 3 cách khóa ghế | đều đúng, chênh nhau khoảng 10% (đã đo lại, xem dưới) ([ADR-0008](docs/adr/0008-seat-and-standing-locking.md)) |
+| **4: bộ lọc Redis tắt → bật** | 5.000 khách, 100 ghế | 159–211 → **701–815 req/s**, p50 ~5 s → **11–456 ms**, lỗi 503 → **0**; vẫn 0 ghế bán trùng |
+| 4 | 5.000 khách, 500 vé đứng | ~200 → **~510 req/s**, p50 ~4,5 s → **~25 ms** |
+
+> Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
 ```bash
 pnpm --filter @questa/api db:seed
