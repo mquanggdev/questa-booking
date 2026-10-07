@@ -113,6 +113,11 @@ export class FakeCompleteResponseDto {
   @ApiProperty({ type: IpnResponseDto, description: 'What our IPN answered' })
   ipn: IpnResponseDto;
 
+  @ApiProperty({
+    description: 'How many times the gateway delivered the IPN (retries on 99)',
+  })
+  deliveries: number;
+
   @ApiProperty({ description: 'Where the gateway sends the browser back' })
   returnUrl: string;
 }

@@ -261,9 +261,9 @@ describe('Payments, refunds and tickets (e2e)', () => {
       expect(first.code).toMatch(/^[A-Za-z0-9_-]{22}$/);
       expect(first.qrSvg).toContain('<svg');
       const labels = (tickets.body as { seatLabel: string | null }[])
-        .map((x) => x.seatLabel)
-        .sort();
-      expect(labels).toEqual(['A1', 'A2', null, null]);
+        .map((x) => String(x.seatLabel))
+        .sort((a, b) => a.localeCompare(b));
+      expect(labels).toEqual(['A1', 'A2', 'null', 'null']);
     });
 
     it('pays inside the grace period, after expires_at', async () => {
@@ -317,6 +317,7 @@ describe('Payments, refunds and tickets (e2e)', () => {
         .send({ txnRef, outcome: 'success' })
         .expect(200);
       expect(done.body.ipn.RspCode).toBe('00');
+      expect(done.body.deliveries).toBe(1);
       const back = new URL(done.body.returnUrl as string);
       const ret = await t
         .http()

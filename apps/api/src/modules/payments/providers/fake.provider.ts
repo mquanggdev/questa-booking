@@ -59,7 +59,9 @@ export class FakePaymentProvider implements PaymentProvider {
     txnRef: string,
     amountVnd: number,
     outcome: FakeOutcome,
-    transactionNo: string = String(randomInt(10_000_000, 99_999_999)),
+    // 14-15 digits: across thousands of load-test payments, two random
+    // numbers must not collide (that would look like one transaction).
+    transactionNo: string = String(randomInt(1e14, 2 ** 48 - 1)),
   ): string {
     const codes: Record<FakeOutcome, [string, string]> = {
       success: ['00', '00'],

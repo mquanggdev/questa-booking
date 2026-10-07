@@ -46,6 +46,14 @@ interface Settlement {
   refundId: string | null;
 }
 
+/** IPN answers after which VNPay stops delivering. */
+const FINAL_IPN_CODES = new Set<string>([
+  IpnReply.CONFIRMED.RspCode,
+  IpnReply.ALREADY_CONFIRMED.RspCode,
+]);
+/** The fake gateway delivers an IPN at most this many times (~4 s). */
+const FAKE_IPN_DELIVERIES = 5;
+
 const paymentRow = {
   id: true,
   orderId: true,
@@ -318,6 +326,13 @@ export class PaymentsService {
         `Only ${sold} of ${seatIds.length} seats could be marked SOLD`,
       );
     }
+    await this.tickets.issue(
+      tx,
+      items.map((i) => i.id),
+    );
+    // The standing counters last: every hold and payment of the zone updates
+    // that one row, so its lock is kept only until the commit right after
+    // (same rule as holds, ADR-0008).
     const perZone = new Map<string, number>();
     for (const item of items) {
       if (!item.seatId) {
@@ -329,10 +344,6 @@ export class PaymentsService {
         throw new Error(`Zone ${zoneId} holds fewer than ${quantity} tickets`);
       }
     }
-    await this.tickets.issue(
-      tx,
-      items.map((i) => i.id),
-    );
   }
 
   /**
@@ -404,13 +415,24 @@ export class PaymentsService {
       amount ?? payment.amount,
       outcome,
     );
-    const ipn = await this.handleIpn(
-      fake.name,
-      Object.fromEntries(new URLSearchParams(query)),
-    );
+    const params = Object.fromEntries(new URLSearchParams(query));
+    // Like VNPay: deliver again, with backoff, until the merchant answers
+    // 00 or 02 (VNPay keeps trying for 5 minutes; the fake one gives up
+    // sooner). A 99 under load is then retried instead of lost.
+    let ipn = await this.handleIpn(fake.name, params);
+    let deliveries = 1;
+    while (
+      !FINAL_IPN_CODES.has(ipn.RspCode) &&
+      deliveries < FAKE_IPN_DELIVERIES
+    ) {
+      await new Promise((r) => setTimeout(r, 250 * 2 ** (deliveries - 1)));
+      ipn = await this.handleIpn(fake.name, params);
+      deliveries += 1;
+    }
     const base = this.config.get('PUBLIC_BASE_URL');
     return {
       ipn,
+      deliveries,
       returnUrl: `${base}/api/v1/payments/return/fake?${query}`,
     };
   }
