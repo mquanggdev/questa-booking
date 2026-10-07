@@ -113,7 +113,9 @@ function record(row, opts) {
   const errors = row.scenario === 'browse'
     ? `${(row.nonExpectedRate * 100).toFixed(2)} %`
     : `${(row.errorRate5xx * 100).toFixed(2)} %`;
-  const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(row.p50)} | ${ms(row.p95)} | ${ms(row.p99)} | ${errors} | ${opts.record} |\n`;
+  const c = row.apiConfig;
+  const machine2 = `${machine}; khóa ${c.SEAT_HOLD_STRATEGY}, gate ${c.RESERVATION_GATE_ENABLED === 'false' ? 'tắt' : 'bật'}, pool ${c.DB_POOL_MAX}`;
+  const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine2} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(row.p50)} | ${ms(row.p95)} | ${ms(row.p99)} | ${errors} | ${opts.record} |\n`;
   appendFileSync(resolve(repo, 'docs/benchmarks.md'), line);
   console.log('\nRecorded in docs/benchmarks.md');
 }
@@ -135,21 +137,55 @@ if (new Date(tokenExpiresAt) < new Date(Date.now() + 10 * 60 * 1000)) {
 }
 mkdirSync(resolve(here, 'results'), { recursive: true });
 
+function resetGate() {
+  sh(
+    ['docker', 'compose', 'exec', '-T', 'redis', 'redis-cli', 'EVAL',
+      readFileSync(resolve(here, 'sql/reset-gate.lua'), 'utf8'), '0',
+      'seat:hold:*', 'zone:*', 'hold:req:*'],
+    { quiet: true },
+  );
+}
+
 if (WRITE_SCENARIOS.has(opts.scenario)) {
-  console.log(`Resetting performance ${perf}…`);
+  console.log(`Resetting performance ${perf} (PostgreSQL and Redis gate)…`);
   psql('sql/reset-performance.sql', perf);
+  resetGate();
 }
 
 const env = [];
 for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts']) {
   if (opts[key]) env.push('-e', `${key.toUpperCase()}=${opts[key]}`);
 }
-sh(['docker', 'compose', '--profile', 'loadtest', 'run', '--rm', ...env, 'k6', 'run', '--quiet',
+// The API's effective configuration, read from the running container. It is
+// printed and recorded with every result, and the container must be the same
+// one before and after the run.
+const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS'];
+function apiState() {
+  const id = sh(['docker', 'inspect', '-f', '{{.Id}}', 'questa-api-1'], { quiet: true }).trim();
+  const values = sh(['docker', 'compose', 'exec', '-T', 'api', 'printenv', ...CONFIG_KEYS], { quiet: true })
+    .trim()
+    .split(String.fromCharCode(10)) // newline; trim() drops a trailing CR
+    .map((v) => v.trim());
+  return { id, config: Object.fromEntries(CONFIG_KEYS.map((k, i) => [k, values[i]])) };
+}
+const before = apiState();
+console.log(`API config: ${JSON.stringify(before.config)}`);
+
+// --no-deps: without it, `docker compose run` re-evaluates the api service
+// from .env and RECREATES it, silently discarding any configuration the API
+// was started with (this invalidated earlier comparisons; see ADR-0011).
+sh(['docker', 'compose', '--profile', 'loadtest', 'run', '--rm', '--no-deps', ...env, 'k6', 'run', '--quiet',
   `/load-tests/scenarios/${opts.scenario}.js`]);
+
+const after = apiState();
+if (after.id !== before.id || JSON.stringify(after.config) !== JSON.stringify(before.config)) {
+  console.error(`The API container changed during the run (${JSON.stringify(before)} -> ${JSON.stringify(after)}). Result discarded.`);
+  process.exit(1);
+}
 
 const summary = JSON.parse(readFileSync(resolve(here, `results/${opts.scenario}.json`), 'utf8'));
 const verify = WRITE_SCENARIOS.has(opts.scenario)
   ? JSON.parse(psql('verify/invariants.sql', perf))
   : null;
-const row = report(opts.scenario, summary, verify);
+const row = { ...report(opts.scenario, summary, verify), apiConfig: before.config };
 if (opts.record) record(row, opts);
