@@ -4,6 +4,7 @@
 //   pnpm loadtest contention
 //   pnpm loadtest standing --vus 1000 --iters 5
 //   pnpm loadtest browse --rate 300 --duration 30s
+//   pnpm loadtest webhook-chaos | full-flow | check-in   (phase 5, fake gateway)
 //   pnpm loadtest contention --record "phase 2 naive"   (appends to docs/benchmarks.md)
 //
 // Steps: reset the target performance (write scenarios) -> k6 in Docker ->
@@ -22,7 +23,8 @@ try {
   // defaults below
 }
 
-const WRITE_SCENARIOS = new Set(['contention', 'standing', 'quota']);
+const PAYMENT_SCENARIOS = new Set(['full-flow', 'webhook-chaos', 'check-in']);
+const WRITE_SCENARIOS = new Set(['contention', 'standing', 'quota', ...PAYMENT_SCENARIOS]);
 const SCENARIOS = new Set([...WRITE_SCENARIOS, 'browse']);
 
 function parseArgs(argv) {
@@ -65,8 +67,12 @@ function report(scenario, summary, verify) {
   const reqs = m.http_reqs?.values ?? {};
   const failed = m.http_req_failed?.values?.rate ?? 0;
   const count = (name) => m[name]?.values?.count ?? 0;
-  const status5xx = count('reservations_5xx');
   const totalReqs = reqs.count ?? 0;
+  // Payment scenarios mark every 4xx as expected (setResponseCallback), so
+  // http_req_failed counts exactly the 5xx and network errors there.
+  const status5xx = PAYMENT_SCENARIOS.has(scenario)
+    ? Math.round(failed * totalReqs)
+    : count('reservations_5xx');
   const row = {
     scenario,
     requests: totalReqs,
@@ -84,7 +90,15 @@ function report(scenario, summary, verify) {
   console.log(`\n=== ${scenario} ===`);
   console.log(`requests        ${totalReqs}  (${row.rps.toFixed(1)} req/s)`);
   console.log(`latency         p50 ${ms(row.p50)} · p95 ${ms(row.p95)} · p99 ${ms(row.p99)} · max ${ms(row.max)}`);
-  if (WRITE_SCENARIOS.has(scenario)) {
+  if (PAYMENT_SCENARIOS.has(scenario)) {
+    row.counters = Object.fromEntries(
+      Object.entries(m)
+        .filter(([name, metric]) => metric.type === 'counter' && !name.startsWith('http_') && !name.startsWith('data_') && name !== 'iterations')
+        .map(([name, metric]) => [name, metric.values.count]),
+    );
+    console.log(`5xx             ${status5xx}`);
+    console.log(`counters        ${JSON.stringify(row.counters)}`);
+  } else if (WRITE_SCENARIOS.has(scenario)) {
     console.log(`held / taken    ${row.held} / ${row.conflicts}   5xx: ${status5xx}`);
   } else {
     console.log(`non-2xx rate    ${(failed * 100).toFixed(2)} %`);
@@ -100,13 +114,23 @@ function record(row, opts) {
     ? `${opts.rate ?? 200} req/s × ${opts.duration ?? '30s'}`
     : row.scenario === 'quota'
       ? `${Number(opts.vus ?? 500) * Number(opts.iters ?? 2)} lượt từ ${opts.accounts ?? 20} tài khoản`
-      : `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt (${opts.vus ?? 1000} VU)`;
+      : row.scenario === 'webhook-chaos'
+        ? `${Number(opts.vus ?? 250) * Number(opts.iters ?? 2)} lượt (${opts.vus ?? 250} VU)`
+        : row.scenario === 'check-in'
+          ? `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt quét ${opts.tickets ?? 100} vé`
+          : `${Number(opts.vus ?? 1000) * Number(opts.iters ?? 5)} lượt (${opts.vus ?? 1000} VU)`;
   let doubleSold = '–';
   if (row.scenario === 'contention') {
     doubleSold = `**${row.verify.i1DoubleSoldSeats}** ghế (+${row.verify.i1ExtraTickets} vé thừa)`;
   } else if (row.scenario === 'standing') {
     const z = row.verify.standing[0];
     doubleSold = `**${z.oversold}** vé vượt sức chứa (${z.ticketsIssued}/${z.capacity}), lệch bộ đếm ${z.lostUpdates}`;
+  } else if (PAYMENT_SCENARIOS.has(row.scenario)) {
+    const v = row.verify;
+    const total = v.i2Violations + v.i4Violations + v.i8Violations + v.i12Violations + v.i9Violations + (v.i6Violations ?? 0);
+    doubleSold = row.scenario === 'check-in'
+      ? `**${v.i6Violations}** vé check-in quá 1 lần (${v.ticketsCheckedIn} vé, ${row.counters.checkins_accepted} lượt nhận)`
+      : `**${total}** vi phạm I2/I4/I8/I9/I12 (${v.orders.PAID ?? 0} đơn PAID, ${(v.orders.REFUND_PENDING ?? 0) + (v.orders.REFUNDED ?? 0)} đơn hoàn tiền)`;
   } else if (row.scenario === 'quota') {
     doubleSold = `**${row.verify.i10Violations}** tài khoản vượt giới hạn (tối đa ${row.verify.maxTicketsOfOneBuyer} vé/người)`;
   }
@@ -153,13 +177,17 @@ if (WRITE_SCENARIOS.has(opts.scenario)) {
 }
 
 const env = [];
-for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts']) {
+for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts', 'tickets']) {
   if (opts[key]) env.push('-e', `${key.toUpperCase()}=${opts[key]}`);
+}
+// The fake gateway's local dummy secret, so k6 can sign IPNs like it does.
+if (PAYMENT_SCENARIOS.has(opts.scenario)) {
+  env.push('-e', `FAKE_PAYMENT_SECRET=${process.env.FAKE_PAYMENT_SECRET ?? 'local-fake-gateway-secret'}`);
 }
 // The API's effective configuration, read from the running container. It is
 // printed and recorded with every result, and the container must be the same
 // one before and after the run.
-const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS'];
+const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER'];
 function apiState() {
   const id = sh(['docker', 'inspect', '-f', '{{.Id}}', 'questa-api-1'], { quiet: true }).trim();
   const values = sh(['docker', 'compose', 'exec', '-T', 'api', 'printenv', ...CONFIG_KEYS], { quiet: true })
@@ -184,8 +212,17 @@ if (after.id !== before.id || JSON.stringify(after.config) !== JSON.stringify(be
 }
 
 const summary = JSON.parse(readFileSync(resolve(here, `results/${opts.scenario}.json`), 'utf8'));
-const verify = WRITE_SCENARIOS.has(opts.scenario)
+let verify = WRITE_SCENARIOS.has(opts.scenario)
   ? JSON.parse(psql('verify/invariants.sql', perf))
   : null;
+if (PAYMENT_SCENARIOS.has(opts.scenario)) {
+  verify = { ...verify, ...JSON.parse(psql('verify/payments.sql', perf)) };
+  if (opts.scenario === 'check-in') {
+    // I6: every accepted scan is one checked-in ticket, and no ticket twice.
+    const accepted = summary.metrics.checkins_accepted?.values?.count ?? 0;
+    const tickets = Number(opts.tickets ?? 100);
+    verify.i6Violations = Math.abs(accepted - verify.ticketsCheckedIn) + Math.max(accepted - tickets, 0);
+  }
+}
 const row = { ...report(opts.scenario, summary, verify), apiConfig: before.config };
 if (opts.record) record(row, opts);

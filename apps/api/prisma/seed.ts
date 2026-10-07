@@ -264,6 +264,12 @@ async function writeLoadTestData(
     token: jwt.sign({ sub: u.id, role: Role.CUSTOMER }, { expiresIn: ttl }),
   }));
 
+  // The gate staff account scans tickets in the check-in scenario.
+  const staff = await prisma.user.findFirstOrThrow({
+    where: { role: Role.STAFF },
+    select: { id: true },
+  });
+
   const seats = await prisma.seat.findMany({
     where: { performanceId: loadTest.id },
     select: { id: true },
@@ -279,6 +285,10 @@ async function writeLoadTestData(
         loadTestPerformanceId: loadTest.id,
         zones: loadTest.zones,
         seatIds: seats.map((s) => s.id),
+        staffToken: jwt.sign(
+          { sub: staff.id, role: Role.STAFF },
+          { expiresIn: ttl },
+        ),
         tokenExpiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
       },
       null,
