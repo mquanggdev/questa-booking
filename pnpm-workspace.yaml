@@ -5,6 +5,7 @@ allowBuilds:
   '@scarf/scarf': false
   argon2: true
   esbuild: true
+  msgpackr-extract: true
   prisma: true
 minimumReleaseAgeExclude:
   - nestjs-pino@5.3.0

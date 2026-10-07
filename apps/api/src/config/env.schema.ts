@@ -30,6 +30,14 @@ export const envSchema = z.object({
   SWAGGER_ENABLED: z.stringbool().default(true),
   // How long a reservation holds its tickets before the order expires.
   HOLD_TTL_SECONDS: z.coerce.number().int().positive().default(600),
+  // Extra time after expires_at before an unpaid order is released, so a
+  // payment confirmed in the last seconds still finds its order (phase 5).
+  PAYMENT_GRACE_SECONDS: z.coerce.number().int().nonnegative().default(120),
+  // Redis filter in front of the database (phase 4). Off = phase 3 behaviour.
+  RESERVATION_GATE_ENABLED: z.stringbool().default(true),
+  // Worker schedules: safety-net sweep of overdue orders, Redis counter repair.
+  SWEEP_EVERY_MS: z.coerce.number().int().positive().default(60_000),
+  RECONCILE_EVERY_MS: z.coerce.number().int().positive().default(30_000),
   // How numbered seats are locked when held. All three are correct; they are
   // kept side by side so the benchmark can compare them (ADR-0008).
   SEAT_HOLD_STRATEGY: z
