@@ -44,4 +44,12 @@ export const testEnv = {
   // Fast worker schedules so tests do not wait a minute for the sweep.
   SWEEP_EVERY_MS: '1000',
   RECONCILE_EVERY_MS: '60000',
+  // Tests only ever talk to the local fake gateway, never to VNPay.
+  PAYMENT_PROVIDER: 'fake',
+  VNPAY_TMN_CODE: '',
+  VNPAY_HASH_SECRET: '',
+  FAKE_PAYMENT_SECRET: 'e2e-fake-gateway-secret-123456',
+  PUBLIC_BASE_URL: 'http://localhost:3100',
+  // Three attempts with 1 s exponential backoff: the DLQ test takes ~3 s.
+  REFUND_MAX_ATTEMPTS: '3',
 } satisfies Record<string, string>;
