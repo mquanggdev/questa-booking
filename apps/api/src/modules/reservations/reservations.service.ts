@@ -1,4 +1,6 @@
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import type { Queue } from 'bullmq';
 import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { isPgError, PgCode } from '../../common/errors/pg-error.js';
@@ -8,13 +10,32 @@ import { PerformancesService } from '../concerts/performances.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import type { OrderResponseDto } from '../orders/dto/order.dto.js';
 import { OrdersService, type NewOrderItem } from '../orders/orders.service.js';
-import { SeatsService } from '../seats/seats.service.js';
+import {
+  ExpireOrderData,
+  expireJobId,
+  RESERVATIONS_QUEUE,
+  ReservationJob,
+} from '../../queue/queue.constants.js';
+import { SeatsService, type SeatHoldStrategy } from '../seats/seats.service.js';
+import { HoldGateService } from './gate/hold-gate.service.js';
 import type { CreateReservationDto } from './dto/create-reservation.dto.js';
 import {
   normalizeSelection,
   requestHash,
   ticketCount,
+  type NormalizedSelection,
 } from './reservation-request.js';
+
+interface HoldInput {
+  performanceId: string;
+  selection: NormalizedSelection;
+  count: number;
+  max: number;
+  hash: string;
+  expiresAt: Date;
+  strategy: SeatHoldStrategy;
+  zones: Map<string, { type: string; price: number }>;
+}
 
 export interface ReservationResult {
   order: OrderResponseDto;
@@ -23,8 +44,14 @@ export interface ReservationResult {
 }
 
 /**
- * Flow A (hold tickets). Every guarantee is enforced by PostgreSQL, inside one
- * transaction, in this order:
+ * Flow A (hold tickets).
+ *
+ * Before the database: an Idempotency-Key that already made an order is
+ * answered straight away, then the Redis gate (phase 4) rejects requests
+ * that are certain to fail without using a database connection.
+ *
+ * Every guarantee is enforced by PostgreSQL, inside one transaction, in this
+ * order:
  *
  * 1. Advisory lock per (user, performance): this user's requests for this
  *    performance run one at a time (I5 replays, I10 ticket limit).
@@ -38,13 +65,17 @@ export interface ReservationResult {
  */
 @Injectable()
 export class ReservationsService {
+  private readonly logger = new Logger(ReservationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly performances: PerformancesService,
     private readonly seats: SeatsService,
     private readonly zones: ZonesService,
     private readonly orders: OrdersService,
+    private readonly gate: HoldGateService,
     private readonly config: AppConfigService,
+    @InjectQueue(RESERVATIONS_QUEUE) private readonly queue: Queue,
   ) {}
 
   async reserve(
@@ -58,7 +89,48 @@ export class ReservationsService {
       throw invalidSelection('Select at least one seat or standing ticket');
     }
 
-    const performance = await this.performances.getOnSale(dto.performanceId);
+    // The gate runs before any database query: under contention most
+    // requests are for seats already gone, and they are answered by Redis
+    // alone. A retry of a committed request comes back as DUPLICATE (not
+    // applied) and goes to the database, which replays the order.
+    const ticket = await this.gate.acquire(
+      `${userId}:${idempotencyKey}`,
+      selection.seatIds,
+      selection.standing,
+    );
+
+    let result: ReservationResult;
+    try {
+      result = await this.reserveInDatabase(
+        userId,
+        idempotencyKey,
+        selection,
+        count,
+      );
+    } catch (error) {
+      await this.gate.rollback(ticket);
+      throw translateConstraintError(error);
+    }
+
+    if (result.replayed) {
+      // An earlier request with this key made the order; this one changed nothing.
+      await this.gate.rollback(ticket);
+      return result;
+    }
+    await this.gate.commit(ticket);
+    await this.scheduleExpiry(result.order.id, result.order.expiresAt);
+    return result;
+  }
+
+  private async reserveInDatabase(
+    userId: string,
+    idempotencyKey: string,
+    selection: NormalizedSelection,
+    count: number,
+  ): Promise<ReservationResult> {
+    const performance = await this.performances.getOnSale(
+      selection.performanceId,
+    );
     const max = performance.maxTicketsPerUser;
     if (count > max) {
       throw new AppException(
@@ -76,89 +148,116 @@ export class ReservationsService {
         });
       }
     }
+    return this.hold(userId, idempotencyKey, {
+      performanceId: performance.id,
+      selection,
+      count,
+      max,
+      hash: requestHash(selection),
+      expiresAt: new Date(
+        Date.now() + this.config.get('HOLD_TTL_SECONDS') * 1000,
+      ),
+      strategy: this.config.get('SEAT_HOLD_STRATEGY'),
+      zones,
+    });
+  }
 
-    const hash = requestHash(selection);
-    const expiresAt = new Date(
-      Date.now() + this.config.get('HOLD_TTL_SECONDS') * 1000,
-    );
-    const strategy = this.config.get('SEAT_HOLD_STRATEGY');
-
+  /**
+   * Delayed job at expires_at + grace. jobId = order id, so a retry never
+   * schedules two. If Redis is down the sweep releases the order instead.
+   */
+  private async scheduleExpiry(
+    orderId: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    const runAt =
+      expiresAt.getTime() + this.config.get('PAYMENT_GRACE_SECONDS') * 1000;
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        await this.orders.lockBuyer(tx, userId, performance.id);
-
-        const existing = await this.orders.findByIdempotencyKey(
-          tx,
-          userId,
-          idempotencyKey,
-        );
-        if (existing) {
-          if (existing.requestHash !== hash) {
-            throw keyReused();
-          }
-          const { requestHash: _hash, ...order } = existing;
-          return { order, replayed: true };
-        }
-
-        const owned = await this.orders.countActiveTickets(
-          tx,
-          userId,
-          performance.id,
-        );
-        if (owned + count > max) {
-          throw new AppException(
-            HttpStatus.CONFLICT,
-            ErrorCode.TICKET_LIMIT_REACHED,
-            `At most ${max} tickets per account for this performance`,
-            { alreadyHeld: owned, requested: count, max },
-          );
-        }
-
-        const items: NewOrderItem[] = [];
-        if (selection.seatIds.length > 0) {
-          const held = await this.seats.hold(
-            tx,
-            performance.id,
-            selection.seatIds,
-            strategy,
-          );
-          for (const seat of held) {
-            items.push({
-              zoneId: seat.zoneId,
-              seatId: seat.id,
-              price: zones.get(seat.zoneId)?.price ?? 0,
-            });
-          }
-        }
-        for (const s of selection.standing) {
-          const price = zones.get(s.zoneId)?.price ?? 0;
-          for (let i = 0; i < s.quantity; i++) {
-            items.push({ zoneId: s.zoneId, seatId: null, price });
-          }
-        }
-
-        const order = await this.orders.createPending(tx, {
-          userId,
-          performanceId: performance.id,
-          expiresAt,
-          idempotencyKey,
-          requestHash: hash,
-          items,
-        });
-
-        for (const s of selection.standing) {
-          await this.zones.holdStanding(
-            tx,
-            performance.id,
-            s.zoneId,
-            s.quantity,
-          );
-        }
-        return { order, replayed: false };
-      });
+      await this.queue.add(
+        ReservationJob.EXPIRE_ORDER,
+        { orderId } satisfies ExpireOrderData,
+        { jobId: expireJobId(orderId), delay: Math.max(runAt - Date.now(), 0) },
+      );
     } catch (error) {
-      throw translateConstraintError(error);
+      this.logger.warn(
+        `Could not schedule expiry of ${orderId}; the sweep will release it: ${String(error)}`,
+      );
     }
+  }
+
+  private hold(
+    userId: string,
+    idempotencyKey: string,
+    p: HoldInput,
+  ): Promise<ReservationResult> {
+    const { performanceId, selection, count, max, hash, expiresAt, zones } = p;
+    return this.prisma.$transaction(async (tx) => {
+      await this.orders.lockBuyer(tx, userId, performanceId);
+
+      const existing = await this.orders.findByIdempotencyKey(
+        tx,
+        userId,
+        idempotencyKey,
+      );
+      if (existing) {
+        if (existing.requestHash !== hash) {
+          throw keyReused();
+        }
+        const { requestHash: _hash, ...order } = existing;
+        return { order, replayed: true };
+      }
+
+      const owned = await this.orders.countActiveTickets(
+        tx,
+        userId,
+        performanceId,
+      );
+      if (owned + count > max) {
+        throw new AppException(
+          HttpStatus.CONFLICT,
+          ErrorCode.TICKET_LIMIT_REACHED,
+          `At most ${max} tickets per account for this performance`,
+          { alreadyHeld: owned, requested: count, max },
+        );
+      }
+
+      const items: NewOrderItem[] = [];
+      if (selection.seatIds.length > 0) {
+        const held = await this.seats.hold(
+          tx,
+          performanceId,
+          selection.seatIds,
+          p.strategy,
+        );
+        for (const seat of held) {
+          items.push({
+            zoneId: seat.zoneId,
+            seatId: seat.id,
+            price: zones.get(seat.zoneId)?.price ?? 0,
+          });
+        }
+      }
+      for (const s of selection.standing) {
+        const price = zones.get(s.zoneId)?.price ?? 0;
+        for (let i = 0; i < s.quantity; i++) {
+          items.push({ zoneId: s.zoneId, seatId: null, price });
+        }
+      }
+
+      const order = await this.orders.createPending(tx, {
+        userId,
+        performanceId: performanceId,
+        expiresAt,
+        idempotencyKey,
+        requestHash: hash,
+        items,
+      });
+
+      for (const s of selection.standing) {
+        await this.zones.holdStanding(tx, performanceId, s.zoneId, s.quantity);
+      }
+      return { order, replayed: false };
+    });
   }
 }
 
