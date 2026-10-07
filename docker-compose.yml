@@ -13,6 +13,10 @@ x-api-env: &api-env
   SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
   HOLD_TTL_SECONDS: ${HOLD_TTL_SECONDS:-600}
   SEAT_HOLD_STRATEGY: ${SEAT_HOLD_STRATEGY:-conditional}
+  PAYMENT_GRACE_SECONDS: ${PAYMENT_GRACE_SECONDS:-120}
+  RESERVATION_GATE_ENABLED: ${RESERVATION_GATE_ENABLED:-true}
+  SWEEP_EVERY_MS: ${SWEEP_EVERY_MS:-60000}
+  RECONCILE_EVERY_MS: ${RECONCILE_EVERY_MS:-30000}
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
   DB_TX_MAX_WAIT_MS: ${DB_TX_MAX_WAIT_MS:-2000}
   DB_TX_TIMEOUT_MS: ${DB_TX_TIMEOUT_MS:-10000}
@@ -85,6 +89,23 @@ services:
       timeout: 3s
       retries: 5
     mem_limit: 512m
+
+  # Background jobs (BullMQ): order expiry, sweep, Redis counter repair.
+  # Same image as the API, different entry point; no HTTP port.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: runtime
+    command: ['node', 'dist/worker.js']
+    environment: *api-env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    mem_limit: 256m
 
   # Load generator, only with `--profile loadtest` (see load-tests/run.mjs).
   # Runs inside the compose network and calls the API directly, not through
