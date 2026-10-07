@@ -199,6 +199,7 @@ model Order {
   user        User        @relation(fields: [userId], references: [id])
   performance Performance @relation(fields: [performanceId], references: [id])
   items       OrderItem[]
+  payments    Payment[]
 
   @@unique([userId, idempotencyKey])
   @@index([userId, performanceId])
@@ -216,11 +217,90 @@ model OrderItem {
   price      Int
   releasedAt DateTime? @map("released_at") @db.Timestamptz
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  zone  Zone  @relation(fields: [zoneId], references: [id])
-  seat  Seat? @relation(fields: [seatId], references: [id])
+  order  Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  zone   Zone    @relation(fields: [zoneId], references: [id])
+  seat   Seat?   @relation(fields: [seatId], references: [id])
+  ticket Ticket?
 
   @@index([orderId])
   @@index([seatId])
   @@map("order_items")
+}
+
+// ---------- Payments ----------
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+// One payment attempt at a gateway. An order may have several attempts
+// (the customer retries); at most one of them makes the order PAID.
+model Payment {
+  id            String        @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderId       String        @map("order_id") @db.Uuid
+  provider      String
+  // Reference sent to the gateway (vnp_TxnRef): the payment id without dashes.
+  txnRef        String        @unique @map("txn_ref")
+  amount        Int
+  status        PaymentStatus @default(PENDING)
+  // The gateway's own transaction number (vnp_TransactionNo). Unique: each
+  // gateway transaction is applied exactly once (I4).
+  providerTxnId String?       @unique @map("provider_txn_id")
+  rawPayload    Json?         @map("raw_payload")
+  paidAt        DateTime?     @map("paid_at") @db.Timestamptz
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  order  Order   @relation(fields: [orderId], references: [id])
+  refund Refund?
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+enum RefundStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+// Money to give back for one successful payment: the order closed before the
+// payment arrived, the order was paid twice, or the performance was cancelled.
+model Refund {
+  id               String       @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  paymentId        String       @unique @map("payment_id") @db.Uuid
+  amount           Int
+  reason           String
+  status           RefundStatus @default(PENDING)
+  attempts         Int          @default(0)
+  providerRefundId String?      @map("provider_refund_id")
+  lastError        String?      @map("last_error")
+  completedAt      DateTime?    @map("completed_at") @db.Timestamptz
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+
+  payment Payment @relation(fields: [paymentId], references: [id])
+
+  @@index([status])
+  @@map("refunds")
+}
+
+// ---------- Tickets ----------
+
+// One ticket per order item of a PAID order. The code is 128 random bits
+// (unguessable): it is what the QR code encodes and what staff scan.
+model Ticket {
+  id          String    @id @default(dbgenerated("uuidv7()")) @db.Uuid
+  orderItemId String    @unique @map("order_item_id") @db.Uuid
+  code        String    @unique
+  issuedAt    DateTime  @default(now()) @map("issued_at") @db.Timestamptz
+  checkedInAt DateTime? @map("checked_in_at") @db.Timestamptz
+  checkedInBy String?   @map("checked_in_by") @db.Uuid
+  voidedAt    DateTime? @map("voided_at") @db.Timestamptz
+
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@map("tickets")
 }

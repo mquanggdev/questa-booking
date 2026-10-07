@@ -27,6 +27,38 @@ describe('validateEnv', () => {
     );
   });
 
+  it('refuses the fake payment gateway in production', () => {
+    expect(() =>
+      validateEnv({
+        ...valid,
+        NODE_ENV: 'production',
+        PAYMENT_PROVIDER: 'fake',
+      }),
+    ).toThrow(/fake payment gateway/);
+    expect(
+      validateEnv({
+        ...valid,
+        NODE_ENV: 'production',
+        PAYMENT_PROVIDER: 'fake',
+        ALLOW_FAKE_PAYMENTS: 'true',
+      }).PAYMENT_PROVIDER,
+    ).toBe('fake');
+  });
+
+  it('requires VNPay credentials when VNPay is the provider', () => {
+    expect(() => validateEnv({ ...valid, PAYMENT_PROVIDER: 'vnpay' })).toThrow(
+      /VNPAY_TMN_CODE/,
+    );
+    expect(
+      validateEnv({
+        ...valid,
+        PAYMENT_PROVIDER: 'vnpay',
+        VNPAY_TMN_CODE: 'ABCD1234',
+        VNPAY_HASH_SECRET: 'x'.repeat(32),
+      }).PAYMENT_PROVIDER,
+    ).toBe('vnpay');
+  });
+
   it('rejects a short JWT secret', () => {
     expect(() =>
       validateEnv({ ...valid, JWT_ACCESS_SECRET: 'too-short' }),

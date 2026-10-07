@@ -20,6 +20,15 @@ x-api-env: &api-env
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
   DB_TX_MAX_WAIT_MS: ${DB_TX_MAX_WAIT_MS:-2000}
   DB_TX_TIMEOUT_MS: ${DB_TX_TIMEOUT_MS:-10000}
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
+  ALLOW_FAKE_PAYMENTS: ${ALLOW_FAKE_PAYMENTS:-false}
+  FAKE_PAYMENT_SECRET: ${FAKE_PAYMENT_SECRET:-local-fake-gateway-secret}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+  REFUND_MAX_ATTEMPTS: ${REFUND_MAX_ATTEMPTS:-5}
+  VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+  VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+  VNPAY_URL: ${VNPAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
 
 services:
   postgres:
