@@ -10,3 +10,6 @@
 docs
 load-tests
 .claude
+**/.next
+**/test-results
+**/playwright-report

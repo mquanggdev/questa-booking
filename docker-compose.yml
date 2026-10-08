@@ -23,7 +23,7 @@ x-api-env: &api-env
   PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
   ALLOW_FAKE_PAYMENTS: ${ALLOW_FAKE_PAYMENTS:-false}
   FAKE_PAYMENT_SECRET: ${FAKE_PAYMENT_SECRET:-local-fake-gateway-secret}
-  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3200}
   REFUND_MAX_ATTEMPTS: ${REFUND_MAX_ATTEMPTS:-5}
   VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
   VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
@@ -115,6 +115,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
     mem_limit: 256m
+
+  # The Next.js web app. Browsers only talk to this origin: it serves the
+  # pages and forwards /api/* to the API (next.config.ts rewrites).
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:3000
+    environment:
+      API_INTERNAL_URL: http://api:3000
+    ports:
+      - '${WEB_PORT:-3200}:3000'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/robots.txt']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 384m
 
   # Load generator, only with `--profile loadtest` (see load-tests/run.mjs).
   # Runs inside the compose network and calls the API directly, not through

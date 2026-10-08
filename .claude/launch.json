@@ -4,8 +4,20 @@
     {
       "name": "showcase",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["docs/showcase/server.mjs"],
+      "runtimeArgs": [
+        "docs/showcase/server.mjs"
+      ],
       "port": 4100
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@questa/web",
+        "dev"
+      ],
+      "port": 3200
     }
   ]
 }
