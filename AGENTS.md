@@ -18,7 +18,7 @@ Nguồn quyết định: [`docs/spec.md`](docs/spec.md). Khi đặc tả thiếu
 
 ## Quy trình
 
-1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **5**.
+1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **6**.
 2. Cuối mỗi giai đoạn: kiểm tra "Định nghĩa hoàn thành" ở mục 10 của đặc tả, rồi **dừng lại báo cáo** cho chủ dự án. Chủ dự án review xong mới gắn tag git.
 3. Giai đoạn 2 cố ý chứa lỗi bán trùng (tag `v0-naive`). Từ giai đoạn 3, mọi kịch bản load test phải cho 0 vi phạm bất biến.
 
