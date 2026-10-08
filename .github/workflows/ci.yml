@@ -48,6 +48,53 @@ jobs:
       - run: pnpm test
       # E2E creates and migrates its own "questa_test" database.
       - run: pnpm test:e2e
+      # The committed OpenAPI document and the web's generated types must
+      # match the API code; otherwise someone changed the API and forgot to
+      # regenerate them.
+      - name: OpenAPI document and web types are up to date
+        run: |
+          pnpm --filter @questa/api openapi:export
+          pnpm --filter @questa/web api:types
+          git diff --exit-code apps/api/openapi.json apps/web/src/lib/api/schema.d.ts
+
+  browser:
+    name: Web — Playwright on the full stack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Configure the stack
+        run: |
+          cp .env.example .env
+          sed -i "s/^JWT_ACCESS_SECRET=.*/JWT_ACCESS_SECRET=ci-$(openssl rand -hex 24)/" .env
+      # `migrate` is a one-off container that exits, so wait for the web
+      # container's health check instead of `up --wait`.
+      - name: Start the stack
+        run: |
+          docker compose up -d --build
+          for i in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q web)")" = healthy ] && exit 0
+            sleep 5
+          done
+          docker compose ps; docker compose logs --tail 100; exit 1
+      - run: pnpm --filter @questa/api db:seed
+      - run: pnpm --filter @questa/web exec playwright install --with-deps chromium
+      - run: pnpm test:browser
+        env:
+          E2E_BASE_URL: http://localhost:3200
+      - if: failure()
+        run: docker compose logs api worker web --tail 200
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7
 
   docker:
     name: Docker image builds
@@ -55,11 +102,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - name: API image
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
           target: runtime
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
