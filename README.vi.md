@@ -28,7 +28,9 @@ docker compose up -d --build
 curl localhost:3000/api/v1/health/ready
 ```
 
-`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API và tiến trình worker chạy nền.
+`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API, tiến trình worker chạy nền và trang web.
+
+- Trang web: <http://localhost:3200>. Chọn đêm diễn, chọn ghế trên sơ đồ, giữ vé, thanh toán ở cổng giả lập, nhận vé QR. Web chuyển `/api/*` sang API, nên trình duyệt chỉ làm việc với một origin.
 
 Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_PROVIDER=fake`), nên không cần tài khoản nào. Muốn trả tiền trên VNPay sandbox thật, xem [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md).
 
@@ -48,6 +50,7 @@ Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_P
 pnpm install
 docker compose up -d postgres redis
 pnpm --filter @questa/api start:dev
+pnpm --filter @questa/web dev        # http://localhost:3200
 ```
 
 | Lệnh | Việc |
@@ -55,6 +58,7 @@ pnpm --filter @questa/api start:dev
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Kiểm tra tĩnh |
 | `pnpm test` | Unit test |
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` (cần PostgreSQL và Redis) |
+| `pnpm test:browser` | Test Playwright luồng mua vé trên trình duyệt thật (cần stack đang chạy và đã seed) |
 
 ## Benchmark
 

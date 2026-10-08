@@ -94,13 +94,15 @@ Chạy từ thư mục gốc repo:
 
 | Lệnh | Việc |
 | --- | --- |
-| `docker compose up -d --build` | Dựng PostgreSQL, Redis, chạy migration, API |
+| `docker compose up -d --build` | Dựng PostgreSQL, Redis, chạy migration, API, worker, web (http://localhost:3200) |
 | `pnpm install` | Cài dependency (tự chạy `prisma generate`) |
 | `pnpm format:check` / `pnpm lint` / `pnpm typecheck` | Kiểm tra code |
 | `pnpm test` | Unit test (không cần DB) |
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
 | `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md` |
+| `pnpm test:browser` | Test Playwright luồng mua vé trên bản build production (cần stack đang chạy và đã seed) |
+| `pnpm --filter @questa/api openapi:export` rồi `pnpm --filter @questa/web api:types` | Sinh lại `openapi.json` và kiểu dữ liệu của web sau khi đổi API |
 | `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
 | `pnpm showcase:video <slides.html>` | Dựng video tiếng Việt từ slide (qua `uv`, không cài gì lên hệ thống) |
 | `pnpm --filter @questa/api db:seed` | Xóa sạch DB dev rồi nạp dữ liệu mẫu, ghi token cho k6 vào `load-tests/data/` |
@@ -109,6 +111,7 @@ Cổng trên máy chủ dự án:
 - PostgreSQL: `5433` (máy đã có PostgreSQL chiếm 5432).
 - Redis: `6379`.
 - API: `API_PORT` trong `.env`. Máy chủ dự án đặt `3100`, vì 3000 đã bị dự án khác chiếm.
+- Web: `WEB_PORT`, mặc định `3200` (cả `next dev`).
 
 ## Skill
 

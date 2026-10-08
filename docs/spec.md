@@ -588,6 +588,8 @@ Hoàn thành khi: có test tự động cho I2, I4, I6, I8, I12; kịch bản `w
 - Test Playwright cho luồng mua vé.
 - Deploy cơ bản lên một VPS bằng Docker Compose để có link demo.
 
+Kiến trúc web (một origin, xác thực trong trình duyệt, kiểu sinh từ OpenAPI, sơ đồ ghế canvas): [ADR-0013](adr/0013-web-app-architecture.md).
+
 Hoàn thành khi: mua được vé trên bản demo online bằng tài khoản thử.
 
 ### Giai đoạn 7a: Mở rộng

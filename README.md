@@ -26,7 +26,9 @@ docker compose up -d --build
 curl localhost:3000/api/v1/health/ready
 ```
 
-`docker compose up` starts PostgreSQL and Redis, applies migrations, then starts the API and the background worker.
+`docker compose up` starts PostgreSQL and Redis, applies migrations, then starts the API, the background worker and the web app.
+
+- Web app: <http://localhost:3200>. Pick a performance, select seats on the map, hold them, pay at the fake gateway, get QR tickets. The web forwards `/api/*` to the API, so the browser only ever talks to one origin.
 
 Payments use the local fake gateway by default (`PAYMENT_PROVIDER=fake`), so no account is needed. To pay on the real VNPay sandbox, follow [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md) (Vietnamese).
 
@@ -46,6 +48,7 @@ Payments use the local fake gateway by default (`PAYMENT_PROVIDER=fake`), so no 
 pnpm install
 docker compose up -d postgres redis
 pnpm --filter @questa/api start:dev
+pnpm --filter @questa/web dev        # http://localhost:3200
 ```
 
 | Command | What it does |
@@ -53,6 +56,7 @@ pnpm --filter @questa/api start:dev
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Static checks |
 | `pnpm test` | Unit tests |
 | `pnpm test:e2e` | End-to-end tests on a separate `questa_test` database (needs PostgreSQL and Redis) |
+| `pnpm test:browser` | Playwright tests of the buying flow in a real browser (needs the stack running and seeded) |
 
 ## Benchmarks
 
