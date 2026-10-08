@@ -17,6 +17,7 @@
     "build": "pnpm -r run build",
     "showcase": "node docs/showcase/server.mjs",
     "showcase:video": "uv run --with edge-tts --with imageio-ffmpeg --with playwright python docs/showcase/tools/make_video.py",
-    "loadtest": "node load-tests/run.mjs"
+    "loadtest": "node load-tests/run.mjs",
+    "test:browser": "pnpm --filter @questa/web test:browser"
   }
 }

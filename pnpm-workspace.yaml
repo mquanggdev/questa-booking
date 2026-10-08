@@ -7,5 +7,7 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
   prisma: true
+  sharp: false
+  unrs-resolver: false
 minimumReleaseAgeExclude:
   - nestjs-pino@5.3.0
