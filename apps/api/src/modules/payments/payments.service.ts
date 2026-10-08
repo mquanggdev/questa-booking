@@ -433,7 +433,7 @@ export class PaymentsService {
     return {
       ipn,
       deliveries,
-      returnUrl: `${base}/api/v1/payments/return/fake?${query}`,
+      returnUrl: `${base}/checkout/result/fake?${query}`,
     };
   }
 

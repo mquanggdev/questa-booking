@@ -319,9 +319,12 @@ describe('Payments, refunds and tickets (e2e)', () => {
       expect(done.body.ipn.RspCode).toBe('00');
       expect(done.body.deliveries).toBe(1);
       const back = new URL(done.body.returnUrl as string);
+      // The browser lands on the web app's result page, which forwards the
+      // same signed query to the API's return endpoint.
+      expect(back.pathname).toBe('/checkout/result/fake');
       const ret = await t
         .http()
-        .get(`${back.pathname}${back.search}`)
+        .get(`/api/v1/payments/return/fake${back.search}`)
         .expect(200);
       expect(ret.body).toMatchObject({
         verified: true,

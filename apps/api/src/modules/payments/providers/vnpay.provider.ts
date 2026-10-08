@@ -43,7 +43,9 @@ export class VnpayProvider implements PaymentProvider {
       txnRef: input.txnRef,
       amountVnd: input.amountVnd,
       orderInfo: input.orderInfo,
-      returnUrl: `${this.config.get('PUBLIC_BASE_URL')}/api/v1/payments/return/vnpay`,
+      // The web app's result page; it asks GET /payments/return/vnpay what
+      // the redirect means. Only the IPN changes the order.
+      returnUrl: `${this.config.get('PUBLIC_BASE_URL')}/checkout/result/vnpay`,
       clientIp: input.clientIp,
       createdAt: new Date(),
       expiresAt: input.expiresAt,

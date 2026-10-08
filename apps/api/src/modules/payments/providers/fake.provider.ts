@@ -44,7 +44,8 @@ export class FakePaymentProvider implements PaymentProvider {
 
   checkoutUrl(input: CheckoutInput): string {
     const base = this.config.get('PUBLIC_BASE_URL');
-    return `${base}/api/v1/payments/fake/checkout?txnRef=${input.txnRef}`;
+    // The fake gateway's payment page lives in the web app.
+    return `${base}/checkout/fake-gateway?txnRef=${input.txnRef}`;
   }
 
   readVerifiedCallback(query: Record<string, unknown>): CallbackResult | null {

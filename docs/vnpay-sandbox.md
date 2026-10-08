@@ -27,7 +27,7 @@ Khi `PAYMENT_PROVIDER=vnpay` mà thiếu mã hoặc secret, API từ chối kh�
 VNPay gọi IPN **từ máy chủ của họ**, nên không gọi được `localhost`. Cần một URL công khai trỏ về API. Cách nhanh nhất là dùng tunnel tạm, ví dụ Cloudflare Quick Tunnel (cài `cloudflared`, không cần tài khoản):
 
 ```bash
-cloudflared tunnel --url http://localhost:3100
+cloudflared tunnel --url http://localhost:3200
 ```
 
 Lệnh in ra một địa chỉ dạng `https://<tên-ngẫu-nhiên>.trycloudflare.com`. Đặt địa chỉ đó vào `.env`:
@@ -36,7 +36,7 @@ Lệnh in ra một địa chỉ dạng `https://<tên-ngẫu-nhiên>.trycloudfla
 PUBLIC_BASE_URL=https://<tên-ngẫu-nhiên>.trycloudflare.com
 ```
 
-`PUBLIC_BASE_URL` dùng để tạo Return URL (`/api/v1/payments/return/vnpay`). Mỗi lần chạy lại tunnel, địa chỉ sẽ đổi, nên phải sửa lại cả `.env` lẫn bước 3.
+Tunnel trỏ vào **trang web** (cổng `WEB_PORT`, mặc định 3200), vì web nhận mọi request rồi chuyển phần `/api/*` sang API. `PUBLIC_BASE_URL` dùng để tạo Return URL (`/checkout/result/vnpay`, một trang của web). Mỗi lần chạy lại tunnel, địa chỉ sẽ đổi, nên phải sửa lại cả `.env` lẫn bước 3, rồi tạo lại container: `docker compose up -d api worker`.
 
 ## 3. Khai báo URL IPN trong trang quản trị sandbox
 
@@ -58,7 +58,7 @@ docker compose up -d --build
 2. Mở `checkoutUrl` trong response. Trang VNPay hết hạn đúng lúc hết giờ giữ vé (`vnp_ExpireDate`).
 3. Chọn ngân hàng **NCB** và nhập thẻ test VNPay công bố cho sandbox: số thẻ `9704198526191432198`, tên `NGUYEN VAN A`, ngày phát hành `07/15`, OTP `123456`.
 4. VNPay gọi IPN, đơn chuyển `PAID` và vé được phát. Xem bằng `GET /api/v1/orders/<id>` và `GET /api/v1/tickets`.
-5. Trình duyệt quay về `/api/v1/payments/return/vnpay`. Trang này chỉ báo trạng thái, không đổi gì.
+5. Trình duyệt quay về trang `/checkout/result/vnpay` của web. Trang này hỏi API `GET /api/v1/payments/return/vnpay` xem kết quả nghĩa là gì, rồi chờ đơn đổi trạng thái. Bản thân nó không đổi gì.
 
 ## 5. Khi có sự cố
 

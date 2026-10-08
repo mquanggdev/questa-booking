@@ -47,8 +47,9 @@ export const envSchema = z
     // Payments (phase 5). "fake" speaks the VNPay protocol against a local
     // simulated gateway; it is refused in production.
     PAYMENT_PROVIDER: z.enum(['fake', 'vnpay']).default('fake'),
-    // Where this API is reachable from browsers and from the gateway (IPN).
-    PUBLIC_BASE_URL: z.url().default('http://localhost:3000'),
+    // Public origin of the site (web app at /, API at /api): browsers are
+    // sent back here and the gateway calls the IPN at /api/v1/payments/ipn.
+    PUBLIC_BASE_URL: z.url().default('http://localhost:3200'),
     // The local Docker stack runs with NODE_ENV=production but still needs the
     // fake gateway for load tests: it must be allowed explicitly. Never set on
     // a public deployment.
