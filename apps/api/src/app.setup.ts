@@ -1,5 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import {
+  DocumentBuilder,
+  SwaggerModule,
+  type OpenAPIObject,
+} from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { createValidationPipe } from './common/pipes/validation.pipe.js';
@@ -17,18 +21,27 @@ export function configureApp(app: INestApplication): void {
   app.enableShutdownHooks();
 
   if (app.get(AppConfigService).get('SWAGGER_ENABLED')) {
-    const config = new DocumentBuilder()
-      .setTitle('Questa Booking API')
-      .setDescription(
-        'High-concurrency concert ticketing. Errors are always { code, message, details? }.',
-      )
-      .setVersion('1.0')
-      .addBearerAuth()
-      .addCookieAuth('refresh_token')
-      .build();
-    const document = SwaggerModule.createDocument(app, config);
+    const document = createOpenApiDocument(app);
     SwaggerModule.setup('api/docs', app, document, {
       jsonDocumentUrl: 'api/docs/openapi.json',
     });
   }
+}
+
+/**
+ * The OpenAPI description of every route. Response schemas come from the
+ * @nestjs/swagger CLI plugin (nest-cli.json), which reads the controllers'
+ * return types at build time. Also exported to openapi.json for the web app.
+ */
+export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
+  const config = new DocumentBuilder()
+    .setTitle('Questa Booking API')
+    .setDescription(
+      'High-concurrency concert ticketing. Errors are always { code, message, details? }.',
+    )
+    .setVersion('1.0')
+    .addBearerAuth()
+    .addCookieAuth('refresh_token')
+    .build();
+  return SwaggerModule.createDocument(app, config);
 }

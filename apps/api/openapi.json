@@ -1,0 +1,1937 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "HealthController_live",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/health/ready": {
+      "get": {
+        "operationId": "HealthController_ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Create a customer account",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Returns an access token in the body and sets the refresh token as an\nhttpOnly cookie, which page scripts cannot read (XSS cannot steal it).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "Exchanges the refresh cookie for a new access token and a new cookie",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "refresh_token": []
+          }
+        ],
+        "summary": "Revokes the refresh token (and its rotation family) and clears the cookie",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/users/me": {
+      "get": {
+        "operationId": "UsersController_me",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The signed-in user's profile",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/concerts": {
+      "get": {
+        "operationId": "ConcertsController_list",
+        "parameters": [
+          {
+            "name": "page",
+            "required": true,
+            "in": "query",
+            "description": "Page number, starting at 1",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": true,
+            "in": "query",
+            "description": "Items per page",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConcertPageDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Public catalog: concerts that have at least one published performance",
+        "tags": [
+          "concerts"
+        ]
+      },
+      "post": {
+        "operationId": "ConcertsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConcertDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConcertResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "concerts"
+        ]
+      }
+    },
+    "/api/v1/concerts/{id}": {
+      "get": {
+        "operationId": "ConcertsController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConcertResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Concert with its published performances (the owner also sees drafts)",
+        "tags": [
+          "concerts"
+        ]
+      }
+    },
+    "/api/v1/concerts/{id}/performances": {
+      "post": {
+        "operationId": "ConcertsController_createPerformance",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePerformanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Creates a DRAFT performance with zones, a generated seat layout and sale phases",
+        "tags": [
+          "concerts"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}": {
+      "get": {
+        "operationId": "PerformancesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Performance detail: zones, prices and sale phases",
+        "tags": [
+          "performances"
+        ]
+      },
+      "patch": {
+        "operationId": "PerformancesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePerformanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "performances"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/publish": {
+      "post": {
+        "operationId": "PerformancesController_publish",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "DRAFT to PUBLISHED; the performance becomes visible to everyone",
+        "tags": [
+          "performances"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/cancel": {
+      "post": {
+        "operationId": "PerformancesController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancels the performance: sales stop immediately; unpaid orders are\ncancelled and paid ones refunded in the background.",
+        "tags": [
+          "performances"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/seats": {
+      "get": {
+        "operationId": "PerformancesController_seats",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatMapResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every seat with its status, and remaining tickets per zone",
+        "tags": [
+          "performances"
+        ]
+      }
+    },
+    "/api/v1/orders": {
+      "get": {
+        "operationId": "OrdersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My orders, newest first",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}": {
+      "get": {
+        "operationId": "OrdersController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/reservations": {
+      "post": {
+        "operationId": "ReservationsController_reserve",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Unique per purchase attempt (e.g. a UUID), 1-100 characters of A-Z a-z 0-9 _ . : -",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReservationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Holds numbered seats and/or standing tickets and creates a PENDING order.\nRetrying with the same Idempotency-Key returns the same order (with the\nheader Idempotent-Replayed: true) instead of holding more tickets.",
+        "tags": [
+          "reservations"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/cancel": {
+      "post": {
+        "operationId": "OrderCancellationController_cancel",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cancels my PENDING order and releases its tickets immediately",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/orders/{id}/pay": {
+      "post": {
+        "operationId": "OrderPaymentController_pay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckoutResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Starts paying for my PENDING order; returns the gateway URL",
+        "tags": [
+          "orders"
+        ]
+      }
+    },
+    "/api/v1/payments/ipn/{provider}": {
+      "get": {
+        "operationId": "PaymentsController_ipn",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IpnResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Instant Payment Notification, called by the gateway (VNPay uses GET).\nAuthenticated by its HMAC-SHA512 signature, not by a token. Always\nanswers 200 with a VNPay RspCode.",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/return/{provider}": {
+      "get": {
+        "operationId": "PaymentsController_returnUrl",
+        "parameters": [
+          {
+            "name": "provider",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentReturnResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Where the gateway sends the browser back. Display only: changes nothing",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/fake/checkout": {
+      "get": {
+        "operationId": "PaymentsController_fakeCheckout",
+        "parameters": [
+          {
+            "name": "txnRef",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FakeCheckoutResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Fake gateway (dev and tests only): the payment page, as data",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/payments/fake/complete": {
+      "post": {
+        "operationId": "PaymentsController_fakeComplete",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FakeCompleteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FakeCompleteResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Fake gateway (dev and tests only): pay or give up, then the IPN is sent",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/v1/tickets": {
+      "get": {
+        "operationId": "TicketsController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TicketResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My tickets with their QR codes",
+        "tags": [
+          "tickets"
+        ]
+      }
+    },
+    "/api/v1/tickets/check-in": {
+      "post": {
+        "operationId": "TicketsController_checkIn",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckInDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CheckInResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Scans a ticket at the gate; each ticket is accepted exactly once",
+        "tags": [
+          "tickets"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Questa Booking API",
+    "description": "High-concurrency concert ticketing. Errors are always { code, message, details? }.",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      },
+      "cookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "example": "jane@example.com"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 128
+          },
+          "fullName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Jane Doe"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "fullName"
+        ]
+      },
+      "UserResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "example": "jane@example.com"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Jane Doe"
+          },
+          "role": {
+            "enum": [
+              "CUSTOMER",
+              "ORGANIZER",
+              "STAFF"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "fullName",
+          "role"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "jane@example.com"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "AuthResponseDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT to send as \"Authorization: Bearer <token>\""
+          },
+          "expiresIn": {
+            "type": "number",
+            "description": "Access token lifetime in seconds",
+            "example": 900
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserResponseDto"
+          }
+        },
+        "required": [
+          "accessToken",
+          "expiresIn",
+          "user"
+        ]
+      },
+      "PerformanceSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "venue": {
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "venue",
+          "startsAt",
+          "status"
+        ]
+      },
+      "ConcertResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "performances": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PerformanceSummaryDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "artist",
+          "description",
+          "performances"
+        ]
+      },
+      "ConcertPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConcertResponseDto"
+            }
+          },
+          "page": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ]
+      },
+      "CreateConcertDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "Questa Fest 2026"
+          },
+          "artist": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "The Questa Band"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 5000
+          }
+        },
+        "required": [
+          "name",
+          "artist"
+        ]
+      },
+      "CreateZoneDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "example": "VIP"
+          },
+          "type": {
+            "enum": [
+              "SEATED",
+              "STANDING"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000,
+            "description": "Ticket price in VND",
+            "example": 3000000
+          },
+          "rows": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "SEATED only: number of rows"
+          },
+          "seatsPerRow": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 200,
+            "description": "SEATED only: seats in each row"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100000,
+            "description": "STANDING only: ticket count"
+          }
+        },
+        "required": [
+          "name",
+          "type",
+          "price"
+        ]
+      },
+      "CreateSalePhaseDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "enum": [
+              "PRESALE",
+              "GENERAL"
+            ],
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endsAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "startsAt",
+          "endsAt"
+        ]
+      },
+      "CreatePerformanceDto": {
+        "type": "object",
+        "properties": {
+          "venue": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "My Dinh National Stadium"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "maxTicketsPerUser": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 6
+          },
+          "zones": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateZoneDto"
+            }
+          },
+          "salePhases": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateSalePhaseDto"
+            }
+          }
+        },
+        "required": [
+          "venue",
+          "startsAt",
+          "zones",
+          "salePhases"
+        ]
+      },
+      "ConcertRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "artist"
+        ]
+      },
+      "ZoneResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "SEATED",
+              "STANDING"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "VND"
+          },
+          "capacity": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "price",
+          "capacity"
+        ]
+      },
+      "SalePhaseResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "enum": [
+              "PRESALE",
+              "GENERAL"
+            ],
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "endsAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "startsAt",
+          "endsAt"
+        ]
+      },
+      "PerformanceResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "concert": {
+            "$ref": "#/components/schemas/ConcertRefDto"
+          },
+          "venue": {
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "DRAFT",
+              "PUBLISHED",
+              "CANCELLED"
+            ],
+            "type": "string"
+          },
+          "maxTicketsPerUser": {
+            "type": "number"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneResponseDto"
+            }
+          },
+          "salePhases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SalePhaseResponseDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "concert",
+          "venue",
+          "startsAt",
+          "status",
+          "maxTicketsPerUser",
+          "zones",
+          "salePhases"
+        ]
+      },
+      "UpdatePerformanceDto": {
+        "type": "object",
+        "properties": {
+          "venue": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "example": "My Dinh National Stadium"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "maxTicketsPerUser": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 6
+          }
+        }
+      },
+      "ZoneAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "SEATED",
+              "STANDING"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "type": "number",
+            "description": "VND"
+          },
+          "capacity": {
+            "type": "number"
+          },
+          "available": {
+            "type": "number",
+            "description": "Tickets that can still be held right now"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "type",
+          "price",
+          "capacity",
+          "available"
+        ]
+      },
+      "SeatResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "row": {
+            "type": "string",
+            "example": "A"
+          },
+          "number": {
+            "type": "number",
+            "example": 1
+          },
+          "status": {
+            "enum": [
+              "AVAILABLE",
+              "HELD",
+              "SOLD"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "zoneId",
+          "row",
+          "number",
+          "status"
+        ]
+      },
+      "SeatMapResponseDto": {
+        "type": "object",
+        "properties": {
+          "performanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneAvailabilityDto"
+            }
+          },
+          "seats": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeatResponseDto"
+            }
+          }
+        },
+        "required": [
+          "performanceId",
+          "zones",
+          "seats"
+        ]
+      },
+      "OrderItemResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seatId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "price": {
+            "type": "number",
+            "description": "VND"
+          }
+        },
+        "required": [
+          "id",
+          "zoneId",
+          "seatId",
+          "price"
+        ]
+      },
+      "OrderResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "performanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "enum": [
+              "PENDING",
+              "PAID",
+              "EXPIRED",
+              "CANCELLED",
+              "REFUND_PENDING",
+              "REFUNDED"
+            ],
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number",
+            "description": "VND"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The hold ends at this time unless the order is paid"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItemResponseDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "performanceId",
+          "status",
+          "totalAmount",
+          "expiresAt",
+          "createdAt",
+          "items"
+        ]
+      },
+      "StandingSelectionDto": {
+        "type": "object",
+        "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20
+          }
+        },
+        "required": [
+          "zoneId",
+          "quantity"
+        ]
+      },
+      "CreateReservationDto": {
+        "type": "object",
+        "properties": {
+          "performanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seatIds": {
+            "uniqueItems": true,
+            "maxItems": 20,
+            "description": "Numbered seats to hold",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "standing": {
+            "maxItems": 20,
+            "description": "Standing tickets per zone",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StandingSelectionDto"
+            }
+          }
+        },
+        "required": [
+          "performanceId"
+        ]
+      },
+      "PayOrderDto": {
+        "type": "object",
+        "properties": {
+          "provider": {
+            "enum": [
+              "vnpay",
+              "fake"
+            ],
+            "type": "string",
+            "description": "Defaults to PAYMENT_PROVIDER"
+          }
+        }
+      },
+      "CheckoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "paymentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string",
+            "enum": [
+              "vnpay",
+              "fake"
+            ]
+          },
+          "checkoutUrl": {
+            "type": "string",
+            "description": "Send the customer's browser here to pay"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "The gateway refuses payment after this time"
+          }
+        },
+        "required": [
+          "paymentId",
+          "provider",
+          "checkoutUrl",
+          "expiresAt"
+        ]
+      },
+      "IpnResponseDto": {
+        "type": "object",
+        "properties": {
+          "RspCode": {
+            "type": "string",
+            "description": "00 confirmed, 01 order not found, 02 already confirmed, 04 invalid amount, 97 invalid signature, 99 unknown error"
+          },
+          "Message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "RspCode",
+          "Message"
+        ]
+      },
+      "PaymentReturnResponseDto": {
+        "type": "object",
+        "properties": {
+          "verified": {
+            "type": "boolean",
+            "description": "The signature of the redirect is valid"
+          },
+          "gatewaySaysSuccess": {
+            "type": "boolean",
+            "description": "What the redirect claims; the order changes only through the IPN"
+          },
+          "responseCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "orderId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "orderStatus": {
+            "nullable": true,
+            "enum": [
+              "PENDING",
+              "PAID",
+              "EXPIRED",
+              "CANCELLED",
+              "REFUND_PENDING",
+              "REFUNDED"
+            ],
+            "type": "string"
+          },
+          "paymentStatus": {
+            "nullable": true,
+            "enum": [
+              "PENDING",
+              "SUCCEEDED",
+              "FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "verified",
+          "gatewaySaysSuccess",
+          "responseCode",
+          "orderId",
+          "orderStatus",
+          "paymentStatus"
+        ]
+      },
+      "FakeCheckoutResponseDto": {
+        "type": "object",
+        "properties": {
+          "txnRef": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "description": "VND"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "paymentStatus": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "SUCCEEDED",
+              "FAILED"
+            ]
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "success",
+                "cancelled",
+                "failed"
+              ]
+            }
+          }
+        },
+        "required": [
+          "txnRef",
+          "amount",
+          "orderId",
+          "paymentStatus",
+          "outcomes"
+        ]
+      },
+      "FakeCompleteDto": {
+        "type": "object",
+        "properties": {
+          "txnRef": {
+            "type": "string",
+            "minLength": 32,
+            "maxLength": 32
+          },
+          "outcome": {
+            "enum": [
+              "success",
+              "cancelled",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 1,
+            "description": "Amount the gateway reports (VND); defaults to the right one"
+          }
+        },
+        "required": [
+          "txnRef",
+          "outcome"
+        ]
+      },
+      "FakeCompleteResponseDto": {
+        "type": "object",
+        "properties": {
+          "ipn": {
+            "description": "What our IPN answered",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/IpnResponseDto"
+              }
+            ]
+          },
+          "deliveries": {
+            "type": "number",
+            "description": "How many times the gateway delivered the IPN (retries on 99)"
+          },
+          "returnUrl": {
+            "type": "string",
+            "description": "Where the gateway sends the browser back"
+          }
+        },
+        "required": [
+          "ipn",
+          "deliveries",
+          "returnUrl"
+        ]
+      },
+      "TicketResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "description": "What the QR code encodes; shown at the gate"
+          },
+          "qrSvg": {
+            "type": "string",
+            "description": "QR code of `code`, as an SVG document"
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "performanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "concertName": {
+            "type": "string"
+          },
+          "venue": {
+            "type": "string"
+          },
+          "startsAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "zoneName": {
+            "type": "string"
+          },
+          "seatLabel": {
+            "type": "string",
+            "nullable": true,
+            "description": "Row and number, e.g. \"B12\"; null in a standing zone"
+          },
+          "issuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "checkedInAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "voidedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "Set when the order left PAID; the ticket is no longer valid"
+          }
+        },
+        "required": [
+          "id",
+          "code",
+          "qrSvg",
+          "orderId",
+          "performanceId",
+          "concertName",
+          "venue",
+          "startsAt",
+          "zoneName",
+          "seatLabel",
+          "issuedAt",
+          "checkedInAt",
+          "voidedAt"
+        ]
+      },
+      "CheckInDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 64,
+            "description": "The code read from the QR"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "CheckInResponseDto": {
+        "type": "object",
+        "properties": {
+          "ticketId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkedInAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "zoneName": {
+            "type": "string"
+          },
+          "seatLabel": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "ticketId",
+          "checkedInAt",
+          "zoneName",
+          "seatLabel"
+        ]
+      }
+    }
+  }
+}
