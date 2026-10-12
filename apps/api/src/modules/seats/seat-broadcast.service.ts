@@ -5,10 +5,10 @@ import {
   OnApplicationBootstrap,
   OnApplicationShutdown,
 } from '@nestjs/common';
-import { Emitter } from '@socket.io/redis-emitter';
 import { Redis } from 'ioredis';
 import { hostname } from 'node:os';
 import { AppConfigService } from '../../config/app-config.service.js';
+import { RedisEventPublisher } from '../../redis/redis-event-publisher.js';
 import { REDIS } from '../../redis/redis.module.js';
 import { PerformancesService } from '../concerts/performances.service.js';
 import { SeatEventsService } from './seat-events.service.js';
@@ -46,11 +46,7 @@ export class SeatBroadcastService
 {
   private readonly logger = new Logger(SeatBroadcastService.name);
   private readonly owner = `${hostname()}:${process.pid}`;
-  private readonly emitter: Emitter;
-  // The emitter calls `publish` without awaiting or catching it, so a Redis
-  // error would surface as an unhandled rejection, which ends a Node
-  // process. Publishing through this shim hands the promise to flush().
-  private lastPublish: Promise<unknown> = Promise.resolve();
+  private readonly publisher: RedisEventPublisher;
   private timer?: NodeJS.Timeout;
   private running = false;
 
@@ -61,10 +57,7 @@ export class SeatBroadcastService
     private readonly performances: PerformancesService,
     private readonly config: AppConfigService,
   ) {
-    this.emitter = new Emitter({
-      publish: (channel: string, message: Buffer) =>
-        (this.lastPublish = redis.publish(channel, message)),
-    }).of(SEATS_NAMESPACE);
+    this.publisher = new RedisEventPublisher(redis, SEATS_NAMESPACE);
   }
 
   onApplicationBootstrap(): void {
@@ -113,10 +106,11 @@ export class SeatBroadcastService
           seats: seats.map((s) => ({ id: s.id, status: s.status })),
           zones: await this.performances.zoneAvailability([...zoneIds]),
         };
-        this.emitter
-          .to(performanceRoom(performanceId))
-          .emit(SeatsEvent.BATCH, batch);
-        await this.lastPublish;
+        await this.publisher.emit(
+          performanceRoom(performanceId),
+          SeatsEvent.BATCH,
+          batch,
+        );
         published += 1;
       } catch (error) {
         // The seq is used up: clients see a gap and reload the snapshot.
