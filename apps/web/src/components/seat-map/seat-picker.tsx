@@ -30,6 +30,10 @@ const ERROR_TEXT: Record<string, string> = {
   TOO_MANY_TICKETS: 'Bạn chọn quá số vé tối đa cho một lần mua.',
   SALE_NOT_OPEN: 'Đêm diễn này hiện không mở bán.',
   SERVICE_UNAVAILABLE: 'Hệ thống đang quá tải. Vui lòng thử lại sau vài giây.',
+  PRESALE_CODE_REQUIRED:
+    'Đợt bán trước chỉ dành cho tài khoản đã kích hoạt mã ưu tiên.',
+  QUEUE_PASS_REQUIRED:
+    'Lượt vào của bạn đã hết hạn. Hãy vào lại hàng chờ (tải lại trang).',
 };
 
 export function SeatPicker({

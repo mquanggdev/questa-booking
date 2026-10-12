@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
+import { PresalePanel } from '@/components/sale/presale-panel';
+import { WaitingRoom } from '@/components/sale/waiting-room';
 import { SeatPicker } from '@/components/seat-map/seat-picker';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -30,12 +32,18 @@ async function Performance({
 
   // Rendered per request, so "now" is the request time.
   const now = new Date();
-  const general = p.salePhases.find((s) => s.type === 'GENERAL');
-  const onSale =
-    p.status === 'PUBLISHED' &&
-    general !== undefined &&
-    new Date(general.startsAt) <= now &&
-    now < new Date(general.endsAt);
+  const open = p.salePhases.find(
+    (s) => new Date(s.startsAt) <= now && now < new Date(s.endsAt),
+  );
+  const next = p.salePhases.find((s) => now < new Date(s.startsAt));
+  const onSale = p.status === 'PUBLISHED' && open !== undefined;
+  // With a waiting room, people may queue before the opening: their order
+  // in line is kept, and they are admitted once the sale opens.
+  const queueBeforeOpening =
+    p.status === 'PUBLISHED' && p.waitingRoomEnabled && next !== undefined;
+  const picker = (
+    <SeatPicker performanceId={p.id} maxTickets={p.maxTicketsPerUser} />
+  );
 
   return (
     <div className="space-y-6">
@@ -60,17 +68,33 @@ async function Performance({
           </AlertDescription>
         </Alert>
       ) : !onSale ? (
-        <Alert>
-          <AlertDescription>
-            Đêm diễn chưa mở bán hoặc đã kết thúc bán vé
-            {general
-              ? ` (mở bán ${formatDateTime(general.startsAt)} – ${formatDateTime(general.endsAt)})`
-              : ''}
-            .
-          </AlertDescription>
-        </Alert>
+        <>
+          <Alert>
+            <AlertDescription>
+              {next
+                ? `Mở bán lúc ${formatDateTime(next.startsAt)}${next.type === 'PRESALE' ? ' (đợt bán trước, cần mã ưu tiên)' : ''}.`
+                : 'Đêm diễn đã kết thúc bán vé.'}
+            </AlertDescription>
+          </Alert>
+          {queueBeforeOpening && (
+            <WaitingRoom performanceId={p.id}>{picker}</WaitingRoom>
+          )}
+        </>
       ) : (
-        <SeatPicker performanceId={p.id} maxTickets={p.maxTicketsPerUser} />
+        <>
+          {open.type === 'PRESALE' && (
+            <PresalePanel
+              performanceId={p.id}
+              salePhaseId={open.id}
+              endsAt={open.endsAt}
+            />
+          )}
+          {p.waitingRoomEnabled ? (
+            <WaitingRoom performanceId={p.id}>{picker}</WaitingRoom>
+          ) : (
+            picker
+          )}
+        </>
       )}
     </div>
   );

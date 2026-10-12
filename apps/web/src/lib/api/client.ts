@@ -38,6 +38,14 @@ export function setAuth(auth: AuthResponse | null): void {
   for (const listener of listeners) listener(auth);
 }
 
+/**
+ * The current access token, for a WebSocket handshake (socket.io `auth`).
+ * Read at every (re)connect, so a refreshed token is picked up.
+ */
+export function currentAccessToken(): string | null {
+  return accessToken;
+}
+
 let refreshing: Promise<AuthResponse | null> | null = null;
 
 /**

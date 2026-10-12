@@ -6,15 +6,21 @@ const DAY = 24 * 60 * 60 * 1000;
 export interface TestPerformance {
   id: string;
   name: string;
+  /** With `presale: true`: 3 presale codes, as the organizer received them. */
+  presaleCodes: string[];
 }
 
 /**
  * A fresh, published performance on sale right now: 2 rows of 5 seats and
  * 20 standing tickets. Created through the API as the seeded organizer, so
  * tests never depend on (or disturb) each other's inventory.
+ *
+ * presale: the open phase is a PRESALE (codes required), the general sale
+ * comes later. waitingRoom: buyers queue first (phase 7b).
  */
 export async function createPerformance(
   request: APIRequestContext,
+  options: { presale?: boolean; waitingRoom?: boolean } = {},
 ): Promise<TestPerformance> {
   const login = await request.post('/api/v1/auth/login', {
     data: {
@@ -46,6 +52,7 @@ export async function createPerformance(
         venue: 'Test Hall',
         startsAt,
         maxTicketsPerUser: 6,
+        waitingRoomEnabled: options.waitingRoom ?? false,
         zones: [
           {
             name: 'Ghế',
@@ -56,23 +63,56 @@ export async function createPerformance(
           },
           { name: 'Đứng', type: 'STANDING', price: 500_000, capacity: 20 },
         ],
-        salePhases: [
-          {
-            type: 'GENERAL',
-            startsAt: new Date(Date.now() - DAY),
-            endsAt: new Date(startsAt.getTime() - DAY),
-          },
-        ],
+        salePhases: options.presale
+          ? [
+              {
+                type: 'PRESALE',
+                startsAt: new Date(Date.now() - DAY),
+                endsAt: new Date(Date.now() + DAY),
+              },
+              {
+                type: 'GENERAL',
+                startsAt: new Date(Date.now() + DAY),
+                endsAt: new Date(startsAt.getTime() - DAY),
+              },
+            ]
+          : [
+              {
+                type: 'GENERAL',
+                startsAt: new Date(Date.now() - DAY),
+                endsAt: new Date(startsAt.getTime() - DAY),
+              },
+            ],
       },
     },
   );
   expect(performance.ok()).toBeTruthy();
-  const id = (await performance.json()).id as string;
+  const created = (await performance.json()) as {
+    id: string;
+    salePhases: { id: string; type: string }[];
+  };
+  const id = created.id;
   const publish = await request.post(`/api/v1/performances/${id}/publish`, {
     headers,
   });
   expect(publish.ok()).toBeTruthy();
-  return { id, name };
+
+  let presaleCodes: string[] = [];
+  if (options.presale) {
+    const codes = await request.post(
+      `/api/v1/performances/${id}/presale/codes`,
+      {
+        headers,
+        data: {
+          salePhaseId: created.salePhases.find((p) => p.type === 'PRESALE')!.id,
+          count: 3,
+        },
+      },
+    );
+    expect(codes.ok()).toBeTruthy();
+    presaleCodes = ((await codes.json()) as { codes: string[] }).codes;
+  }
+  return { id, name, presaleCodes };
 }
 
 /** Registers a brand-new customer through the UI; ends signed in. */
