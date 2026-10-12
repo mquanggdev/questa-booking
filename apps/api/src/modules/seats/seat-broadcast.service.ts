@@ -47,6 +47,10 @@ export class SeatBroadcastService
   private readonly logger = new Logger(SeatBroadcastService.name);
   private readonly owner = `${hostname()}:${process.pid}`;
   private readonly emitter: Emitter;
+  // The emitter calls `publish` without awaiting or catching it, so a Redis
+  // error would surface as an unhandled rejection, which ends a Node
+  // process. Publishing through this shim hands the promise to flush().
+  private lastPublish: Promise<unknown> = Promise.resolve();
   private timer?: NodeJS.Timeout;
   private running = false;
 
@@ -57,7 +61,10 @@ export class SeatBroadcastService
     private readonly performances: PerformancesService,
     private readonly config: AppConfigService,
   ) {
-    this.emitter = new Emitter(redis).of(SEATS_NAMESPACE);
+    this.emitter = new Emitter({
+      publish: (channel: string, message: Buffer) =>
+        (this.lastPublish = redis.publish(channel, message)),
+    }).of(SEATS_NAMESPACE);
   }
 
   onApplicationBootstrap(): void {
@@ -109,6 +116,7 @@ export class SeatBroadcastService
         this.emitter
           .to(performanceRoom(performanceId))
           .emit(SeatsEvent.BATCH, batch);
+        await this.lastPublish;
         published += 1;
       } catch (error) {
         // The seq is used up: clients see a gap and reload the snapshot.
