@@ -9,9 +9,15 @@
  * - "Questa Fest 2026": 2 performances x 10,000 tickets
  *   (8,000 numbered seats in VIP / CAT 1 / CAT 2 + 2,000 standing)
  * - "Load Test Night": 100 seats + 500 standing, the k6 contention target
+ * - "Questa Arena Live": 10,000 tickets with the virtual waiting room on,
+ *   the k6 on-sale target (phase 7b)
+ * - "Questa Fan Club Night": in its PRESALE phase, with 50 presale codes
  * - load-tests/data/users.json: customers with long-lived access tokens, so k6
  *   never has to hash 5,000 passwords during setup
- * - load-tests/data/fixtures.json: ids that the k6 scripts target
+ * - load-tests/data/fixtures.json: ids that the k6 scripts target, and the
+ *   presale codes (development data, shown on the demo page)
+ * - load-tests/data/on-sale.json: the on-sale night's seat ids, kept apart
+ *   so the other scenarios do not load 8,000 ids into every virtual user
  */
 import { JwtService } from '@nestjs/jwt';
 import { PrismaPg } from '@prisma/adapter-pg';
@@ -24,11 +30,16 @@ import {
   type SalePhaseType,
   type ZoneType,
 } from '../src/generated/prisma/client.js';
+import {
+  formatPresaleCode,
+  newPresaleCode,
+} from '../src/modules/concerts/presale-code.js';
 import { rowLabel } from '../src/modules/seats/row-label.js';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const CUSTOMER_COUNT = 5000;
+const PRESALE_CODE_COUNT = 50;
 const OUTPUT_DIR = resolve(import.meta.dirname, '../../../load-tests/data');
 
 interface ZoneSpec {
@@ -57,6 +68,17 @@ const STADIUM_ZONES: ZoneSpec[] = [
     seatsPerRow: 80,
   },
   { name: 'GA', type: 'STANDING', price: 800_000, capacity: 2000 },
+];
+
+const FAN_CLUB_ZONES: ZoneSpec[] = [
+  {
+    name: 'FAN ZONE',
+    type: 'SEATED',
+    price: 1_500_000,
+    rows: 10,
+    seatsPerRow: 20,
+  },
+  { name: 'GA', type: 'STANDING', price: 700_000, capacity: 300 },
 ];
 
 const LOAD_TEST_ZONES: ZoneSpec[] = [
@@ -167,7 +189,72 @@ async function main(): Promise<void> {
       salePhases: generalSale(labStart),
     });
 
-    await writeLoadTestData(prisma, loadTest);
+    // On-sale target: k6 moves the sale's opening a few seconds into the
+    // future before every run, so buyers queue first and then rush in.
+    const arena = await prisma.concert.create({
+      data: {
+        organizerId: organizer.id,
+        name: 'Questa Arena Live',
+        artist: 'Neon Harbor',
+        description:
+          'One night, 10,000 tickets, a virtual waiting room in front of the sale.',
+      },
+    });
+    const arenaStart = new Date(now + 45 * DAY);
+    const onSale = await createPerformance(prisma, {
+      concertId: arena.id,
+      venue: 'Phu Tho Indoor Arena',
+      startsAt: arenaStart,
+      zones: STADIUM_ZONES,
+      salePhases: generalSale(arenaStart),
+      waitingRoomEnabled: true,
+    });
+
+    // Presale running now, general sale in two days.
+    const fanClub = await prisma.concert.create({
+      data: {
+        organizerId: organizer.id,
+        name: 'Questa Fan Club Night',
+        artist: 'The Questa Collective',
+        description:
+          'Members first: the presale needs a code from the fan club.',
+      },
+    });
+    const fanStart = new Date(now + 20 * DAY);
+    const presale = await createPerformance(prisma, {
+      concertId: fanClub.id,
+      venue: 'Hoa Binh Theater',
+      startsAt: fanStart,
+      zones: FAN_CLUB_ZONES,
+      salePhases: [
+        {
+          type: 'PRESALE',
+          startsAt: new Date(now - HOUR),
+          endsAt: new Date(now + 2 * DAY),
+        },
+        {
+          type: 'GENERAL',
+          startsAt: new Date(now + 2 * DAY),
+          endsAt: new Date(fanStart.getTime() - DAY),
+        },
+      ],
+    });
+    const presalePhase = await prisma.salePhase.findFirstOrThrow({
+      where: { performanceId: presale.id, type: 'PRESALE' },
+      select: { id: true },
+    });
+    const codes = Array.from({ length: PRESALE_CODE_COUNT }, () =>
+      newPresaleCode(),
+    );
+    await prisma.presaleCode.createMany({
+      data: codes.map((code) => ({ salePhaseId: presalePhase.id, code })),
+    });
+
+    await writeLoadTestData(prisma, loadTest, onSale, {
+      performanceId: presale.id,
+      salePhaseId: presalePhase.id,
+      codes: codes.map(formatPresaleCode),
+    });
 
     const seats = await prisma.seat.count();
     console.log(
@@ -196,6 +283,7 @@ async function createPerformance(
     startsAt: Date;
     zones: ZoneSpec[];
     salePhases: { type: SalePhaseType; startsAt: Date; endsAt: Date }[];
+    waitingRoomEnabled?: boolean;
   },
 ): Promise<{
   id: string;
@@ -207,6 +295,7 @@ async function createPerformance(
       venue: input.venue,
       startsAt: input.startsAt,
       status: 'PUBLISHED',
+      waitingRoomEnabled: input.waitingRoomEnabled ?? false,
       salePhases: { create: input.salePhases },
     },
   });
@@ -241,12 +330,16 @@ async function createPerformance(
   return { id: performance.id, zones };
 }
 
+interface SeededPerformance {
+  id: string;
+  zones: { id: string; name: string; type: ZoneType }[];
+}
+
 async function writeLoadTestData(
   prisma: PrismaClient,
-  loadTest: {
-    id: string;
-    zones: { id: string; name: string; type: ZoneType }[];
-  },
+  loadTest: SeededPerformance,
+  onSale: SeededPerformance,
+  presale: { performanceId: string; salePhaseId: string; codes: string[] },
 ): Promise<void> {
   const jwt = new JwtService({
     secret: required('JWT_ACCESS_SECRET'),
@@ -276,8 +369,24 @@ async function writeLoadTestData(
     orderBy: { id: 'asc' },
   });
 
+  // Insertion order (uuidv7): zone by zone, row by row, seat by seat, so
+  // neighbouring ids are neighbouring seats (buyers pick blocks of them).
+  const onSaleSeats = await prisma.seat.findMany({
+    where: { performanceId: onSale.id },
+    select: { id: true },
+    orderBy: { id: 'asc' },
+  });
+
   mkdirSync(OUTPUT_DIR, { recursive: true });
   writeFileSync(resolve(OUTPUT_DIR, 'users.json'), JSON.stringify(users));
+  writeFileSync(
+    resolve(OUTPUT_DIR, 'on-sale.json'),
+    JSON.stringify({
+      performanceId: onSale.id,
+      zones: onSale.zones,
+      seatIds: onSaleSeats.map((s) => s.id),
+    }),
+  );
   writeFileSync(
     resolve(OUTPUT_DIR, 'fixtures.json'),
     JSON.stringify(
@@ -285,6 +394,8 @@ async function writeLoadTestData(
         loadTestPerformanceId: loadTest.id,
         zones: loadTest.zones,
         seatIds: seats.map((s) => s.id),
+        onSalePerformanceId: onSale.id,
+        presale,
         staffToken: jwt.sign(
           { sub: staff.id, role: Role.STAFF },
           { expiresIn: ttl },

@@ -7,6 +7,7 @@
 //   pnpm loadtest webhook-chaos | full-flow | check-in   (phase 5, fake gateway)
 //   pnpm loadtest contention --record "phase 2 naive"   (appends to docs/benchmarks.md)
 //   pnpm loadtest contention --kill-after 5               (kills one API replica 5 s in)
+//   pnpm loadtest on-sale [--queue off] [--lead 20]      (phase 7b, waiting room)
 //
 // Steps: reset the target performance (write scenarios) -> k6 in Docker ->
 // invariant SQL -> printed report (+ optional benchmark row).
@@ -25,7 +26,7 @@ try {
 }
 
 const PAYMENT_SCENARIOS = new Set(['full-flow', 'webhook-chaos', 'check-in']);
-const WRITE_SCENARIOS = new Set(['contention', 'standing', 'quota', ...PAYMENT_SCENARIOS]);
+const WRITE_SCENARIOS = new Set(['contention', 'standing', 'quota', 'on-sale', ...PAYMENT_SCENARIOS]);
 const SCENARIOS = new Set([...WRITE_SCENARIOS, 'browse']);
 
 function parseArgs(argv) {
@@ -50,12 +51,13 @@ function sh(args, { input, quiet = false } = {}) {
   return result.stdout ?? '';
 }
 
-function psql(file, perf) {
+function psql(file, perf, vars = {}) {
   const user = process.env.POSTGRES_USER ?? 'questa';
   const db = process.env.POSTGRES_DB ?? 'questa';
+  const extra = Object.entries(vars).flatMap(([k, v]) => ['-v', `${k}=${v}`]);
   return sh(
     ['docker', 'compose', 'exec', '-T', 'postgres', 'psql', '-U', user, '-d', db,
-      '-v', 'ON_ERROR_STOP=1', '-At', '-v', `perf=${perf}`, '-f', '-'],
+      '-v', 'ON_ERROR_STOP=1', '-At', '-v', `perf=${perf}`, ...extra, '-f', '-'],
     { input: readFileSync(resolve(here, file), 'utf8'), quiet: true },
   ).trim();
 }
@@ -91,7 +93,20 @@ function report(scenario, summary, verify) {
   console.log(`\n=== ${scenario} ===`);
   console.log(`requests        ${totalReqs}  (${row.rps.toFixed(1)} req/s)`);
   console.log(`latency         p50 ${ms(row.p50)} · p95 ${ms(row.p95)} · p99 ${ms(row.p99)} · max ${ms(row.max)}`);
-  if (PAYMENT_SCENARIOS.has(scenario)) {
+  if (scenario === 'on-sale') {
+    const holdLatency = m['http_req_duration{name:POST /reservations}']?.values ?? {};
+    const wait = m.queue_wait?.values ?? {};
+    row.hold = { p50: holdLatency.med, p95: holdLatency['p(95)'], p99: holdLatency['p(99)'] };
+    row.queueWait = { p50: wait.med, p95: wait['p(95)'], max: wait.max };
+    row.counters = Object.fromEntries(
+      ['queue_admitted', 'queue_never_admitted', 'reservations_held', 'tickets_held',
+        'reservations_conflict', 'buyers_gave_up', 'admitted_but_refused',
+        'bypass_refused', 'bypass_accepted', 'reservations_5xx'].map((n) => [n, count(n)]),
+    );
+    console.log(`holds           p50 ${ms(row.hold.p50)} · p95 ${ms(row.hold.p95)} · p99 ${ms(row.hold.p99)}`);
+    console.log(`queue wait      p50 ${ms(wait.med)} · p95 ${ms(wait['p(95)'])} · max ${ms(wait.max)}`);
+    console.log(`counters        ${JSON.stringify(row.counters)}`);
+  } else if (PAYMENT_SCENARIOS.has(scenario)) {
     row.counters = Object.fromEntries(
       Object.entries(m)
         .filter(([name, metric]) => metric.type === 'counter' && !name.startsWith('http_') && !name.startsWith('data_') && name !== 'iterations')
@@ -112,7 +127,9 @@ function record(row, opts) {
   const tag = sh(['git', 'describe', '--tags', '--always', '--dirty'], { quiet: true }).trim();
   const replicas = row.apiReplicas ?? 1;
   const machine = `R5 4600H, 16 GB; Docker 7.7 GB; ${replicas} API (512 MB)${replicas > 1 ? ' sau Nginx' : ''}${row.killed ? `, giết ${row.killed} giữa chừng` : ''}`;
-  const load = row.scenario === 'browse'
+  const load = row.scenario === 'on-sale'
+    ? `${Number(opts.vus ?? 2000) * Number(opts.iters ?? 2)} khách (${opts.vus ?? 2000} VU) trên 10.000 vé, hàng chờ ${opts.queue === 'off' ? 'tắt' : `bật (${row.apiConfig.WAITING_ROOM_ADMIT_PER_TICK} người / ${row.apiConfig.WAITING_ROOM_TICK_MS} ms)`}`
+    : row.scenario === 'browse'
     ? `${opts.rate ?? 200} req/s × ${opts.duration ?? '30s'}`
     : row.scenario === 'quota'
       ? `${Number(opts.vus ?? 500) * Number(opts.iters ?? 2)} lượt từ ${opts.accounts ?? 20} tài khoản`
@@ -133,6 +150,11 @@ function record(row, opts) {
     doubleSold = row.scenario === 'check-in'
       ? `**${v.i6Violations}** vé check-in quá 1 lần (${v.ticketsCheckedIn} vé, ${row.counters.checkins_accepted} lượt nhận)`
       : `**${total}** vi phạm I2/I4/I8/I9/I12 (${v.orders.PAID ?? 0} đơn PAID, ${(v.orders.REFUND_PENDING ?? 0) + (v.orders.REFUNDED ?? 0)} đơn hoàn tiền)`;
+  } else if (row.scenario === 'on-sale') {
+    const v = row.verify;
+    const z = v.standing[0];
+    const total = v.i1DoubleSoldSeats + v.i9Violations + v.i10Violations + row.counters.bypass_accepted + row.counters.admitted_but_refused;
+    doubleSold = `**${total}** vi phạm I1/I9/I10 và hàng chờ (${v.seatsSold + z.ticketsIssued}/10.000 vé được giữ, ${row.counters.bypass_refused} lượt lách hàng bị chặn)`;
   } else if (row.scenario === 'quota') {
     doubleSold = `**${row.verify.i10Violations}** tài khoản vượt giới hạn (tối đa ${row.verify.maxTicketsOfOneBuyer} vé/người)`;
   }
@@ -141,7 +163,13 @@ function record(row, opts) {
     : `${(row.errorRate5xx * 100).toFixed(2)} %`;
   const c = row.apiConfig;
   const machine2 = `${machine}; khóa ${c.SEAT_HOLD_STRATEGY}, gate ${c.RESERVATION_GATE_ENABLED === 'false' ? 'tắt' : 'bật'}, pool ${c.DB_POOL_MAX}${row.scenario === 'browse' ? `, cache ${c.CATALOG_CACHE_TTL_SECONDS === '0' ? 'tắt' : `${c.CATALOG_CACHE_TTL_SECONDS} s`}` : ''}`;
-  const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine2} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(row.p50)} | ${ms(row.p95)} | ${ms(row.p99)} | ${errors} | ${opts.record} |\n`;
+  // on-sale: the latency columns are the holds' (polling GET /queue/me
+  // would dominate the overall numbers); the queue wait goes in the note.
+  const lat = row.scenario === 'on-sale' ? row.hold : row;
+  const note = row.scenario === 'on-sale' && opts.queue !== 'off'
+    ? `${opts.record}. Chờ trong hàng sau giờ mở bán: p50 ${ms(row.queueWait.p50)}, p95 ${ms(row.queueWait.p95)}`
+    : opts.record;
+  const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine2} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(lat.p50)} | ${ms(lat.p95)} | ${ms(lat.p99)} | ${errors} | ${note} |\n`;
   appendFileSync(resolve(repo, 'docs/benchmarks.md'), line);
   console.log('\nRecorded in docs/benchmarks.md');
 }
@@ -156,7 +184,13 @@ if (!existsSync(fixturesPath)) {
   console.error('load-tests/data/fixtures.json is missing. Run: pnpm --filter @questa/api db:seed');
   process.exit(1);
 }
-const { loadTestPerformanceId: perf, tokenExpiresAt } = JSON.parse(readFileSync(fixturesPath, 'utf8'));
+const fixtures = JSON.parse(readFileSync(fixturesPath, 'utf8'));
+const { tokenExpiresAt } = fixtures;
+const perf = opts.scenario === 'on-sale' ? fixtures.onSalePerformanceId : fixtures.loadTestPerformanceId;
+if (!perf) {
+  console.error('fixtures.json predates this scenario. Re-run: pnpm --filter @questa/api db:seed');
+  process.exit(1);
+}
 if (new Date(tokenExpiresAt) < new Date(Date.now() + 10 * 60 * 1000)) {
   console.error('Seeded tokens expire soon. Re-run: pnpm --filter @questa/api db:seed');
   process.exit(1);
@@ -179,7 +213,26 @@ if (WRITE_SCENARIOS.has(opts.scenario)) {
 }
 
 const env = [];
-for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts', 'tickets']) {
+if (opts.scenario === 'on-sale') {
+  // The sale opens `lead` seconds from now, by the database's clock (the
+  // same clock as the k6 container's; the host's may differ). The line,
+  // the cached performance and the passes start empty.
+  const lead = Number(opts.lead ?? 20);
+  psql('sql/prepare-on-sale.sql', perf, { lead, queue: opts.queue === 'off' ? 'false' : 'true' });
+  const opensAt = psql('sql/on-sale-opens-at.sql', perf);
+  sh(
+    ['docker', 'compose', 'exec', '-T', 'redis', 'redis-cli', 'EVAL',
+      readFileSync(resolve(here, 'sql/reset-gate.lua'), 'utf8'), '0',
+      `wr:${perf}:*`, `cache:performance:${perf}`],
+    { quiet: true },
+  );
+  sh(['docker', 'compose', 'exec', '-T', 'redis', 'redis-cli', 'SREM', 'wr:active', perf], { quiet: true });
+  env.push('-e', `OPENS_AT=${opensAt}`);
+  // Without a line there is nothing to bypass.
+  if (opts.queue === 'off') env.push('-e', 'BYPASS_SHARE=0');
+  console.log(`Sale opens in ${lead} s; waiting room ${opts.queue === 'off' ? 'off' : 'on'}`);
+}
+for (const key of ['vus', 'iters', 'rate', 'duration', 'accounts', 'tickets', 'poll']) {
   if (opts[key]) env.push('-e', `${key.toUpperCase()}=${opts[key]}`);
 }
 // The fake gateway's local dummy secret, so k6 can sign IPNs like it does.
@@ -189,7 +242,7 @@ if (PAYMENT_SCENARIOS.has(opts.scenario)) {
 // The API's effective configuration, read from the running container. It is
 // printed and recorded with every result, and the container must be the same
 // one before and after the run.
-const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER', 'RATE_LIMIT_ENABLED', 'CATALOG_CACHE_TTL_SECONDS'];
+const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER', 'RATE_LIMIT_ENABLED', 'CATALOG_CACHE_TTL_SECONDS', 'WAITING_ROOM_TICK_MS', 'WAITING_ROOM_ADMIT_PER_TICK'];
 function apiState() {
   // Every API replica: the set must not change during a run (except the one
   // replica that --kill-after stops on purpose).
