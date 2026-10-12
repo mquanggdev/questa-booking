@@ -12,6 +12,7 @@ import { ApiError, api, call, type Schemas } from '@/lib/api/client';
 import { useAuth } from '@/lib/auth';
 import { formatVnd } from '@/lib/format';
 import { SEAT_COLORS } from './seat-colors';
+import { useRealtimeSeatMap } from './use-realtime-seat-map';
 
 type Seat = Schemas['SeatResponseDto'];
 
@@ -50,6 +51,7 @@ export function SeatPicker({
   const attempt = useRef<{ selection: string; key: string } | null>(null);
 
   const seatMapKey = ['seat-map', performanceId];
+  const realtime = useRealtimeSeatMap(performanceId, seatMapKey);
   const { data: map, isLoading } = useQuery({
     queryKey: seatMapKey,
     queryFn: () =>
@@ -58,17 +60,24 @@ export function SeatPicker({
           params: { path: { id: performanceId } },
         }),
       ),
-    // Until the realtime WebSocket arrives (phase 7a), poll.
-    refetchInterval: 5_000,
+    // Pushed over the WebSocket; polling is the safety net, and the fallback
+    // while the socket is down.
+    refetchInterval: realtime.connected ? 30_000 : 5_000,
   });
 
   const zones = map?.zones ?? [];
   const zoneById = new Map(zones.map((z) => [z.id, z]));
   const seatById = new Map((map?.seats ?? []).map((s) => [s.id, s]));
   const standingCount = Object.values(standing).reduce((a, b) => a + b, 0);
-  const count = selected.size + standingCount;
+  // Seats someone else took while they were in our selection (seen through
+  // the realtime map) drop out of it.
+  const lost = [...selected].filter(
+    (id) => seatById.has(id) && seatById.get(id)?.status !== 'AVAILABLE',
+  );
+  const chosen = [...selected].filter((id) => !lost.includes(id));
+  const count = chosen.length + standingCount;
   const total =
-    [...selected].reduce(
+    chosen.reduce(
       (sum, id) =>
         sum + (zoneById.get(seatById.get(id)?.zoneId ?? '')?.price ?? 0),
       0,
@@ -83,10 +92,7 @@ export function SeatPicker({
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(seat.id)) next.delete(seat.id);
-      else if (
-        seat.status === 'AVAILABLE' &&
-        prev.size + standingCount < maxTickets
-      )
+      else if (seat.status === 'AVAILABLE' && count < maxTickets)
         next.add(seat.id);
       return next;
     });
@@ -97,7 +103,7 @@ export function SeatPicker({
     setSubmitting(true);
     const body = {
       performanceId,
-      seatIds: [...selected].sort(),
+      seatIds: [...chosen].sort(),
       standing: Object.entries(standing)
         .filter(([, qty]) => qty > 0)
         .map(([zoneId, quantity]) => ({ zoneId, quantity })),
@@ -140,15 +146,28 @@ export function SeatPicker({
   const standingZones = zones.filter((z) => z.type === 'STANDING');
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+    <div
+      className="grid gap-6 lg:grid-cols-[1fr_280px]"
+      data-testid="seat-picker"
+      data-seq={map.seq}
+      data-ws-instance={realtime.instance ?? ''}
+      data-ws-connected={realtime.connected}
+    >
       <div className="space-y-4">
         {seatedZones.length > 0 && (
           <>
-            <Legend />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Legend />
+              <span className="text-xs text-muted-foreground">
+                {realtime.connected
+                  ? '● Cập nhật trực tiếp'
+                  : '○ Đang kết nối lại…'}
+              </span>
+            </div>
             <SeatMapCanvas
               zones={zones}
               seats={map.seats}
-              selected={selected}
+              selected={new Set(chosen)}
               onToggle={toggle}
             />
             <p className="text-xs text-muted-foreground">
@@ -208,7 +227,7 @@ export function SeatPicker({
       <aside className="h-fit space-y-4 rounded-lg border p-4 lg:sticky lg:top-4">
         <h2 className="font-semibold">Vé đã chọn</h2>
         <ul className="space-y-1 text-sm">
-          {[...selected].map((id) => {
+          {chosen.map((id) => {
             const seat = seatById.get(id);
             return (
               <li key={id}>
@@ -228,6 +247,18 @@ export function SeatPicker({
             <li className="text-muted-foreground">Chưa chọn vé nào.</li>
           )}
         </ul>
+        {lost.length > 0 && (
+          <Alert>
+            <AlertDescription>
+              {lost
+                .map(
+                  (id) => `${seatById.get(id)?.row}${seatById.get(id)?.number}`,
+                )
+                .join(', ')}{' '}
+              vừa có người khác giữ và đã được bỏ khỏi lựa chọn.
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="flex justify-between border-t pt-3 font-medium">
           <span>Tổng</span>
           <span data-testid="selection-total">{formatVnd(total)}</span>

@@ -621,6 +621,8 @@ export interface components {
         SeatMapResponseDto: {
             /** Format: uuid */
             performanceId: string;
+            /** @description Snapshot sequence number: apply only realtime batches with a greater seq (WebSocket /seats) */
+            seq: number;
             zones: components["schemas"]["ZoneAvailabilityDto"][];
             seats: components["schemas"]["SeatResponseDto"][];
         };
