@@ -503,11 +503,11 @@ Các giai đoạn làm tuần tự, được gom thành 4 mốc. Hết mỗi m�
 | | 3 | Chống bán trùng ở database | `v1-db-lock` |
 | | 4 | Giữ vé có thời hạn, tách worker | `v2-hold` |
 | | 5 | Thanh toán, vé, soát vé | `v3-payment` |
-| | 6 | Web tối giản và deploy cơ bản | `v3-demo` |
+| | 6 | Web tối giản | `v3-web` |
 | M2: Mở rộng | 7a | Nhiều instance, WebSocket, cache, rate limit | `v4-scale` |
 | | 7b | Đợt mở bán, mã ưu tiên, hàng chờ ảo | `v4-sales` |
 | M3: Hướng sự kiện | 8 | Kafka và outbox | `v5-kafka` |
-| M4: Vận hành | 9 | Giám sát, CI/CD hoàn chỉnh, README | `v1.0.0` |
+| M4: Vận hành | 9 | Giám sát, deploy online, CI/CD hoàn chỉnh, README | `v1.0.0` |
 
 ### Định nghĩa hoàn thành cho mọi giai đoạn
 
@@ -582,15 +582,17 @@ Hoàn thành khi: test chứng minh ghế tự về `AVAILABLE` sau khi hết h�
 
 Hoàn thành khi: có test tự động cho I2, I4, I6, I8, I12; kịch bản `webhook-chaos` không tạo vi phạm nào.
 
-### Giai đoạn 6: Web tối giản và deploy cơ bản
+### Giai đoạn 6: Web tối giản
 
 - `apps/web` bằng Next.js: danh sách concert, sơ đồ ghế (react-konva), chọn vé đứng, thanh toán, vé QR. Kiểu dữ liệu sinh từ Swagger.
-- Test Playwright cho luồng mua vé.
-- Deploy cơ bản lên một VPS bằng Docker Compose để có link demo.
+- Test Playwright cho luồng mua vé, chạy trên toàn bộ stack trong CI.
+- `docker compose up` dựng cả trang web; README có ảnh động luồng mua vé.
+
+Deploy online được dời sang giai đoạn 9 ([ADR-0014](adr/0014-defer-online-deploy.md)).
 
 Kiến trúc web (một origin, xác thực trong trình duyệt, kiểu sinh từ OpenAPI, sơ đồ ghế canvas): [ADR-0013](adr/0013-web-app-architecture.md).
 
-Hoàn thành khi: mua được vé trên bản demo online bằng tài khoản thử.
+Hoàn thành khi: mua được vé trên trình duyệt với stack dựng bằng `docker compose up`; test Playwright luồng mua vé xanh trong CI trên toàn bộ stack; README có ảnh động luồng mua vé.
 
 ### Giai đoạn 7a: Mở rộng
 
@@ -623,6 +625,7 @@ Hoàn thành khi: test chứng minh I7 trong ba tình huống: relay bị tắt 
 ### Giai đoạn 9: Vận hành
 
 - Metrics Prometheus và dashboard Grafana cho thông lượng, độ trễ, độ dài queue, độ trễ consumer.
+- Deploy bản demo online lần đầu. Hạ tầng chốt ở đầu giai đoạn, dựa trên phân tích ở [ADR-0014](adr/0014-defer-online-deploy.md).
 - CI build image, đẩy lên GitHub Container Registry, deploy qua SSH, HTTPS bằng Let's Encrypt.
 - README hoàn chỉnh.
 
@@ -630,7 +633,7 @@ Hoàn thành khi: bản demo online chạy đầy đủ, README có sơ đồ ki
 
 ## 11. Triển khai và README
 
-Bản online chỉ để demo chức năng; mọi số liệu load test được đo ở local bằng Docker Compose.
+Bản online chỉ để demo chức năng; mọi số liệu load test được đo ở local bằng Docker Compose. Bản online có từ giai đoạn 9 ([ADR-0014](adr/0014-defer-online-deploy.md)).
 
 ### Triển khai
 
@@ -660,4 +663,4 @@ README có hai bản: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Vi�
 | --- | --- | --- |
 | Code VNPay | Chủ dự án cung cấp từ dự án ecommerce | 5 |
 | Dịch vụ gửi email production | Chưa chọn; ở local dùng Mailpit | 8 |
-| Cấu hình VPS và tên miền | Chưa có | 6 |
+| Hạ tầng cho bản online | Đã có tên miền và một VPS 1 vCPU / 1 GB đang chạy dự án khác; phương án đang cân nhắc: web trên Vercel và backend trên VPS, hoặc nâng VPS ([ADR-0014](adr/0014-defer-online-deploy.md)) | 9 |
