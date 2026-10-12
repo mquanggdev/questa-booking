@@ -4,7 +4,7 @@
 
 A concert ticketing backend built to sell exactly the seats that exist when thousands of people buy at the same moment, and to prove it with numbers.
 
-> **Status:** Phase 7a done: two API replicas behind Nginx, a realtime seat map over WebSocket (snapshot + `seq`, proven to converge across replicas), a Redis cache for catalog reads and rate limiting with counters shared by the replicas. Earlier phases: database guards against double-selling, a Redis filter, expiring holds, payments through a signed IPN with refunds, a Next.js web app tested with Playwright. An online demo comes with phase 9.
+> **Status:** Phase 7b done: presale codes (single use, one per account per presale, enforced by the database) and a virtual waiting room that admits buyers at a measured pace, with live position over WebSocket. Earlier phases: database guards against double-selling, a Redis filter, expiring holds, payments through a signed IPN with refunds, a Next.js web app, two API replicas behind Nginx with a realtime seat map, a catalog cache and rate limiting. An online demo comes with phase 9.
 
 ![Buying tickets: sign up, pick seats and standing tickets, hold, pay at the fake gateway, get QR tickets](docs/assets/buying-flow.gif)
 
@@ -31,6 +31,7 @@ curl localhost:3000/api/v1/health/ready
 `docker compose up` starts PostgreSQL and Redis, applies migrations, then starts two API replicas, the background worker and the web app, all behind Nginx, the single entry point (`/` to the web app, `/api` and `/socket.io` to the API replicas).
 
 - Web app: <http://localhost:3200>. Pick a performance, select seats on the map, hold them, pay at the fake gateway, get QR tickets. Seats held or sold by other buyers change color live. Every response names the replica that served it in an `X-Instance` header.
+- After seeding: "Questa Arena Live" (10,000 tickets) sells through the virtual waiting room, and "Questa Fan Club Night" is in its presale; its 50 presale codes are written to `load-tests/data/fixtures.json`.
 
 Payments use the local fake gateway by default (`PAYMENT_PROVIDER=fake`), so no account is needed. To pay on the real VNPay sandbox, follow [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md) (Vietnamese).
 
@@ -82,12 +83,16 @@ Every number comes from `pnpm loadtest <scenario>`: k6 inside the compose networ
 | 7a | 5,000 buyers, 500 standing tickets | 436 → **614 req/s**; exactly 500 tickets |
 | 7a | one replica killed (`docker kill`) 5 s into the run | **0 invariant violations** in both scenarios; only the requests in flight on the dead replica fail |
 | 7a: catalog cache off → on | 400 req/s of catalog reads | could only sustain 362 req/s at p95 4.9 s → **400 req/s at p95 7 ms** |
+| **7b: on-sale, 10,000 tickets** | 4,000 buyers queue before the opening; 5% try to skip the line | waiting room admitting **50/s**: holds p50 **20 ms**, p95 **99 ms**, 0 errors, **0 of 114** line-skippers got through |
+| 7b | same rush, admitting 100/s | over capacity on this machine: holds p50 3.7 s, 503s (the pool is exhausted). The admission rate is set from measurements |
+| 7b | same rush, **no waiting room** | holds p95 **10.7 s**, 16% of requests fail with 503; still 0 invariant violations |
+| 7b | first on-sale run, before fixing the stack | 28,457 × 502: Node's listen queue overflowed and a keep-alive race made Nginx mark both healthy replicas dead ([ADR-0016](docs/adr/0016-presale-codes-and-waiting-room.md)) |
 
 > A measurement bug (`docker compose run` silently recreated the API with default settings) invalidated three earlier comparisons. The load-test script now records the API's real configuration with every result; affected rows are marked and re-measured ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
 ```bash
 pnpm --filter @questa/api db:seed
-pnpm loadtest contention      # or: standing, quota, browse, full-flow, webhook-chaos, check-in
+pnpm loadtest contention      # or: standing, quota, browse, full-flow, webhook-chaos, check-in, on-sale
 ```
 
 ## Documentation

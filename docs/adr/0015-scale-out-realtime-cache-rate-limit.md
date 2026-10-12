@@ -25,6 +25,7 @@
 - `server api:3000 resolve` (có trong Nginx mã nguồn mở từ 1.27.3): Nginx đọc lại DNS của Docker. Bản sao khởi động lại với IP mới vẫn được nhận, và Nginx khởi động được kể cả khi tên chưa tra được.
 - Request **POST không bao giờ được Nginx gửi lại** sang bản sao khác khi bản sao đầu chết giữa chừng (mặc định của `proxy_next_upstream`), nên không có chuyện một lần giữ vé bị gửi hai lần.
 - `proxy_connect_timeout 2s`: IP của bản sao đã chết không trả lời gì, nên với mặc định 60 s, request sẽ treo 60 s rồi mới được chuyển sang bản sao khác. DNS được đọc lại mỗi 30 s, không phải 5 s: nếu Nginx đọc lại DNS và gỡ bản sao chết đúng lúc request đang kết nối, nhóm upstream chỉ còn 1 server, mà Nginx không thử lại khi chỉ có 1 server. Cửa sổ đua là timeout chia cho chu kỳ đọc DNS, khoảng 7%.
+- Cập nhật ở giai đoạn 7b ([ADR-0016](0016-presale-codes-and-waiting-room.md), mục 4): `max_fails=3 fail_timeout=10s` thay cho `max_fails=1`, Node giữ kết nối keep-alive lâu hơn Nginx (65 s so với 60 s), và backlog của `listen` là 4096. Với cấu hình cũ, một cú dồn tải lúc mở bán khiến Nginx đánh dấu cả 2 instance khỏe là chết.
 - API tin `X-Forwarded-For` **chỉ khi request đến từ proxy trong mạng nội bộ** (`trust proxy: loopback, uniquelocal`). Khách từ Internet không giả được IP bằng cách tự gửi header.
 - Mỗi response có `X-Instance` (tên container) để test và demo thấy được việc cân bằng tải.
 

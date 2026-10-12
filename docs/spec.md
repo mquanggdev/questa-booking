@@ -162,9 +162,9 @@ Thuật ngữ: `concerts` là chương trình; `performances` là một đêm di
 | `users` | `email`, `password_hash`, `full_name`, `role` | `email` unique |
 | `refresh_tokens` | `user_id`, `family_id`, `token_hash`, `expires_at`, `revoked_at`, `replaced_by` | Xoay vòng: mỗi lần dùng thì thu hồi token cũ và cấp token mới trong cùng family. Dùng lại token đã thu hồi thì thu hồi cả family |
 | `concerts` | `organizer_id`, `name`, `artist`, `description` | Chương trình, gồm một hoặc nhiều đêm diễn |
-| `performances` | `concert_id`, `venue`, `starts_at`, `status`, `max_tickets_per_user` | `status`: `DRAFT`, `PUBLISHED`, `CANCELLED` |
+| `performances` | `concert_id`, `venue`, `starts_at`, `status`, `max_tickets_per_user`, `waiting_room_enabled` | `status`: `DRAFT`, `PUBLISHED`, `CANCELLED` |
 | `sale_phases` | `performance_id`, `type`, `starts_at`, `ends_at` | `type`: `PRESALE`, `GENERAL` |
-| `presale_codes` | `sale_phase_id`, `code`, `redeemed_by`, `redeemed_at` | `code` unique, mỗi mã dùng một lần |
+| `presale_codes` | `sale_phase_id`, `code`, `redeemed_by`, `redeemed_at` | `code` unique, mỗi mã dùng một lần. Partial unique (`sale_phase_id`, `redeemed_by`): mỗi tài khoản một mã cho mỗi đợt |
 | `zones` | `performance_id`, `name`, `type`, `price`, `capacity`, `held_count`, `sold_count` | `type`: `SEATED`, `STANDING`. Check `held_count + sold_count <= capacity` |
 | `seats` | `performance_id`, `zone_id`, `row_label`, `seat_number`, `status` | Chỉ có ở khu `SEATED`. Unique (`performance_id`, `zone_id`, `row_label`, `seat_number`) |
 | `orders` | `user_id`, `performance_id`, `status`, `total_amount`, `expires_at`, `idempotency_key`, `request_hash` | Unique (`user_id`, `idempotency_key`); `request_hash` phát hiện key bị dùng lại cho request khác |
@@ -233,7 +233,7 @@ Tất cả đọc từ biến môi trường.
 
 ### Luồng A: Giữ vé
 
-1. Kiểm tra đêm diễn đang trong một đợt mở bán. Nếu là đợt bán trước, tài khoản phải đã kích hoạt mã ưu tiên. Kiểm tra vé vào cửa của hàng chờ ảo còn hiệu lực (nếu bật).
+1. Kiểm tra vé vào cửa của hàng chờ ảo còn hiệu lực (nếu bật), rồi kiểm tra mã ưu tiên nếu đang là đợt bán trước. Hai bước này chạy **trước** cổng Redis ở bước 3, để request bị từ chối không chiếm ghế trong Redis dù chỉ một lúc. Trong transaction, PostgreSQL kiểm tra lại đợt mở bán và mã ưu tiên. Nếu bị từ chối nhưng `Idempotency-Key` đã tạo ra một đơn, API trả lại đơn đó (I5) ([ADR-0016](adr/0016-presale-codes-and-waiting-room.md)).
 2. Nếu `Idempotency-Key` đã tồn tại cho người dùng này, trả về đơn cũ. Nếu hai request cùng key đến song song, request thua sẽ đụng ràng buộc unique; lỗi này được bắt lại và trả về đơn đã có, không trả 500.
 3. Giữ chỗ trong Redis bằng một Lua script, làm cổng lọc mềm để chặn bớt tải trước khi vào DB, chạy **trước mọi truy vấn DB**. Với ghế ngồi: key `seat:hold:{seatId}` (TTL ngắn khi đang chạy, kéo dài sau khi commit). Với vé đứng: giảm bộ đếm số vé còn lại của khu, không cho xuống dưới 0. Chỉ cần một phần thất bại thì không giữ gì cả. Redis lỗi thì bỏ qua cổng (fail-open), PostgreSQL vẫn quyết định ([ADR-0010](adr/0010-redis-gate-and-expiry.md)).
 4. Mở transaction và lấy `pg_advisory_xact_lock` theo (`user_id`, `performance_id`). Đếm số vé tài khoản đang giữ và đã mua cho đêm diễn; từ chối nếu vượt giới hạn.
@@ -279,6 +279,10 @@ WHERE code = $2 AND redeemed_by IS NULL
 
 Chỉ tài khoản đã kích hoạt mới giữ được vé. Đợt `GENERAL` mở cho mọi tài khoản.
 
+- Ban tổ chức sinh mã cho một đợt `PRESALE` (`POST /performances/:id/presale/codes`) rồi tự phát cho khách. Mã gồm 10 ký tự ngẫu nhiên (khoảng 49 bit), không có ký tự dễ nhầm, hiện dạng `K7QM-2XRP-9D`; khi nhập, bỏ qua hoa thường, dấu cách và gạch ngang.
+- Mỗi tài khoản kích hoạt tối đa một mã cho mỗi đợt (partial unique index). Mã thứ hai không bị đốt.
+- Kích hoạt lại chính mã của mình trả 200. Mã của đêm diễn khác được báo là không tồn tại (404).
+
 ### Hủy đêm diễn
 
 1. Ban tổ chức hủy đêm diễn; `performances.status` chuyển sang `CANCELLED` và hệ thống ngừng nhận giữ vé.
@@ -302,6 +306,15 @@ Không có dòng nào bị ảnh hưởng thì đọc lại vé để trả lờ
 ### Hàng chờ ảo
 
 Khi đêm diễn bật hàng chờ, người dùng vào một sorted set trong Redis theo thời điểm đến. Worker cho vào từng đợt theo tốc độ cấu hình và cấp vé vào cửa có thời hạn, gắn với tài khoản và đêm diễn. API giữ vé từ chối request không có vé vào cửa hợp lệ. Vị trí trong hàng được đẩy qua WebSocket.
+
+- Mỗi người vào hàng nhận một **số thứ tự** (script Lua, nguyên tử): vào lại thì giữ số cũ. Điểm trong sorted set là số này.
+- Job `admit-batch` chạy mỗi `WAITING_ROOM_TICK_MS` (mặc định 1 s), cho vào tối đa `WAITING_ROOM_ADMIT_PER_TICK` người (mặc định 50, đo ở giai đoạn 7b) của mỗi đêm diễn **khi đang có đợt mở bán**. Vào hàng trước giờ mở bán vẫn giữ thứ tự.
+- Vé vào cửa là một key Redis có TTL `WAITING_ROOM_PASS_TTL_SECONDS` (mặc định 10 phút). Hết hạn thì phải vào lại cuối hàng.
+- `queue.position` là **một** tin cho cả hàng: `admittedThrough` (số của người cuối cùng đã được vào) và `waiting`. Vị trí của mỗi người = số của mình − `admittedThrough`.
+- `GET /queue/me` trả thêm thời gian chờ dự kiến và `pollAfterMs` (1–30 s, sớm hơn khi gần tới lượt), cho client không có WebSocket.
+- Redis lỗi thì cho qua (fail open); PostgreSQL vẫn quyết định mọi lượt giữ vé.
+
+Lý do và số đo: [ADR-0016](adr/0016-presale-codes-and-waiting-room.md).
 
 ### Sơ đồ ghế realtime
 
@@ -352,7 +365,10 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | POST | `/performances/:id/cancel` | `ORGANIZER` | Hủy đêm diễn và hoàn tiền mọi đơn đã thanh toán |
 | GET | `/performances/:id/seats` | Công khai | Bản chụp trạng thái ghế kèm `seq`, và số vé còn lại của từng khu đứng |
 | GET | `/performances/:id/stats` | `ORGANIZER` | Số vé đã bán theo khu, doanh thu, số vé đang giữ, độ dài hàng chờ |
+| POST | `/performances/:id/presale/codes` | `ORGANIZER` | Sinh mã ưu tiên dùng một lần cho một đợt `PRESALE` (tối đa 1.000 mã một lần) |
+| GET | `/performances/:id/presale/codes` | `ORGANIZER` | Danh sách mã và trạng thái đã dùng |
 | POST | `/performances/:id/presale/redeem` | `CUSTOMER` | Kích hoạt mã ưu tiên cho đợt bán trước |
+| GET | `/performances/:id/presale/me` | `CUSTOMER` | Các đợt bán trước mà tài khoản đã kích hoạt mã |
 | POST | `/performances/:id/queue` | `CUSTOMER` | Vào hàng chờ ảo |
 | GET | `/performances/:id/queue/me` | `CUSTOMER` | Vị trí trong hàng, vé vào cửa nếu đã đến lượt |
 | POST | `/reservations` | `CUSTOMER` | Giữ vé: danh sách ghế ngồi và số lượng theo khu đứng. Bắt buộc header `Idempotency-Key`; gửi lại cùng key trả lại đơn cũ với header `Idempotent-Replayed: true`, cùng key cho request khác trả `422` ([ADR-0009](adr/0009-idempotency-and-ticket-limit.md)) |
@@ -375,8 +391,9 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | --- | --- | --- | --- |
 | `/seats` | `join` | Client gửi | `performanceId` muốn theo dõi |
 | `/seats` | `seats.batch` | Server gửi | `seq`, danh sách (`seatId`, trạng thái hiện tại) và số vé còn lại của các khu vừa đổi (gộp cả `zone.updated`, để ghế và khu dùng chung một `seq`) |
-| `/queue` | `queue.position` | Server gửi | Vị trí hiện tại trong hàng chờ |
-| `/queue` | `queue.admitted` | Server gửi | Vé vào cửa và thời hạn |
+| `/queue` | `join` | Client gửi (cần đăng nhập) | `performanceId` muốn theo dõi; ack là trạng thái hiện tại của mình |
+| `/queue` | `queue.position` | Server gửi, cho cả hàng | `admittedThrough` và `waiting`; vị trí = số của mình − `admittedThrough` |
+| `/queue` | `queue.admitted` | Server gửi, cho một người | Vé vào cửa và thời hạn (`expiresAt`) |
 | `/sales` | `sales.updated` | Server gửi, chỉ cho `ORGANIZER` | Số vé đã bán theo khu, doanh thu, số vé đang giữ, độ dài hàng chờ |
 
 ### Giới hạn tốc độ
@@ -389,6 +406,7 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | Request đã đăng nhập, theo tài khoản | 120 / phút (`RATE_LIMIT_USER_PER_MINUTE`) |
 | `POST /auth/login`, theo IP | 10 / phút |
 | `POST /reservations`, theo tài khoản | 20 / phút |
+| `POST /performances/:id/presale/redeem`, theo tài khoản | 10 / phút |
 
 Bộ đếm tính theo từng route. Vượt giới hạn trả `429` kèm `Retry-After`. Load test tắt rate limit, vì mọi người dùng ảo của k6 đi từ một IP.
 
@@ -486,7 +504,7 @@ Laptop: AMD Ryzen 5 4600H (6 nhân, 12 luồng), 16 GB RAM, Windows 11, Docker D
 | `full-flow` | Giữ vé, thanh toán giả lập, nhận vé | Luồng đầy đủ, I2, I9 (I7 từ giai đoạn 8) |
 | `webhook-chaos` | IPN gửi trùng, gửi trễ, gửi sau khi đơn hết hạn, sai số tiền | I4, I8, I12 |
 | `check-in` | Cùng một mã vé quét đồng thời nhiều lần | I6 |
-| `on-sale` | Tải tăng vọt lúc mở bán trên đêm diễn 10.000 vé | Thông lượng, độ trễ, hàng chờ ảo |
+| `on-sale` | Tải tăng vọt lúc mở bán trên đêm diễn 10.000 vé: khách vào hàng chờ trước giờ mở, được cho vào theo lô, mỗi người giữ 1–4 vé; 5% cố giữ vé mà không xếp hàng. `--queue off` chạy cùng cú dồn tải không có hàng chờ để đối chứng | Thông lượng, độ trễ, hàng chờ ảo; I1, I9, I10; không ai lách được hàng |
 
 Token đăng nhập cho người dùng ảo được tạo sẵn bằng script seed, để phần setup của k6 không phải băm mật khẩu 5.000 lần.
 
@@ -619,6 +637,8 @@ Hoàn thành khi: hai trình duyệt nối vào hai instance khác nhau cùng th
 - Đợt mở bán và mã ưu tiên.
 - Hàng chờ ảo.
 - Kịch bản k6 `on-sale`.
+
+Thiết kế: [ADR-0016](adr/0016-presale-codes-and-waiting-room.md).
 
 Hoàn thành khi: có test tự động cho I11; kịch bản `on-sale` có số liệu và không có vi phạm.
 

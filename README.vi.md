@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 7a: 2 instance API sau Nginx, sơ đồ ghế realtime qua WebSocket (bản chụp kèm `seq`, đã chứng minh hội tụ trên nhiều instance), cache Redis cho API đọc danh mục, và rate limit với bộ đếm dùng chung giữa các instance. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền, trang web Next.js test bằng Playwright. Bản demo online có ở giai đoạn 9.
+> **Trạng thái:** Xong giai đoạn 7b: mã ưu tiên (dùng một lần, mỗi tài khoản một mã cho mỗi đợt bán trước, do database bảo đảm) và hàng chờ ảo cho người mua vào theo tốc độ đã đo, vị trí cập nhật trực tiếp qua WebSocket. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền, trang web Next.js, 2 instance API sau Nginx với sơ đồ ghế realtime, cache danh mục và rate limit. Bản demo online có ở giai đoạn 9.
 
 ![Mua vé: đăng ký, chọn ghế và vé đứng, giữ vé, thanh toán ở cổng giả lập, nhận vé QR](docs/assets/buying-flow.gif)
 
@@ -33,6 +33,7 @@ curl localhost:3000/api/v1/health/ready
 `docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động 2 instance API, tiến trình worker chạy nền và trang web, tất cả sau Nginx, cửa vào duy nhất (`/` sang trang web, `/api` và `/socket.io` sang các instance API).
 
 - Trang web: <http://localhost:3200>. Chọn đêm diễn, chọn ghế trên sơ đồ, giữ vé, thanh toán ở cổng giả lập, nhận vé QR. Ghế người khác vừa giữ hoặc mua đổi màu ngay. Mỗi response ghi instance đã xử lý trong header `X-Instance`.
+- Sau khi seed: "Questa Arena Live" (10.000 vé) bán qua hàng chờ ảo, còn "Questa Fan Club Night" đang trong đợt bán trước; 50 mã ưu tiên của nó được ghi vào `load-tests/data/fixtures.json`.
 
 Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_PROVIDER=fake`), nên không cần tài khoản nào. Muốn trả tiền trên VNPay sandbox thật, xem [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md).
 
@@ -84,12 +85,16 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | 7a | 5.000 khách, 500 vé đứng | 436 → **614 req/s**; đúng 500 vé |
 | 7a | giết một instance (`docker kill`) ở giây thứ 5 | **0 vi phạm bất biến** ở cả hai kịch bản; chỉ các request đang dở trên instance chết bị lỗi |
 | 7a: cache danh mục tắt → bật | đọc danh mục 400 req/s | chỉ theo được 362 req/s, p95 4,9 s → **400 req/s, p95 7 ms** |
+| **7b: mở bán 10.000 vé** | 4.000 khách vào hàng chờ trước giờ mở; 5% cố lách hàng | hàng chờ cho vào **50 người/s**: giữ vé p50 **20 ms**, p95 **99 ms**, 0 lỗi, **0 trên 114** lượt lách hàng lọt qua |
+| 7b | cùng cú dồn tải, cho vào 100 người/s | vượt sức chứa trên máy này: giữ vé p50 3,7 s, có 503 (pool DB cạn). Tốc độ cho vào được đặt theo số đo |
+| 7b | cùng cú dồn tải, **không hàng chờ** | giữ vé p95 **10,7 s**, 16% request lỗi 503; vẫn 0 vi phạm bất biến |
+| 7b | lần chạy mở bán đầu tiên, trước khi sửa | 28.457 lỗi 502: hàng đợi kết nối của Node tràn, và lỗi đua keep-alive khiến Nginx đánh dấu cả 2 instance khỏe là chết ([ADR-0016](docs/adr/0016-presale-codes-and-waiting-room.md)) |
 
 > Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
 ```bash
 pnpm --filter @questa/api db:seed
-pnpm loadtest contention      # hoặc: standing, quota, browse, full-flow, webhook-chaos, check-in
+pnpm loadtest contention      # hoặc: standing, quota, browse, full-flow, webhook-chaos, check-in, on-sale
 ```
 
 ## Tài liệu
