@@ -140,7 +140,7 @@ function record(row, opts) {
     ? `${(row.nonExpectedRate * 100).toFixed(2)} %`
     : `${(row.errorRate5xx * 100).toFixed(2)} %`;
   const c = row.apiConfig;
-  const machine2 = `${machine}; khóa ${c.SEAT_HOLD_STRATEGY}, gate ${c.RESERVATION_GATE_ENABLED === 'false' ? 'tắt' : 'bật'}, pool ${c.DB_POOL_MAX}`;
+  const machine2 = `${machine}; khóa ${c.SEAT_HOLD_STRATEGY}, gate ${c.RESERVATION_GATE_ENABLED === 'false' ? 'tắt' : 'bật'}, pool ${c.DB_POOL_MAX}${row.scenario === 'browse' ? `, cache ${c.CATALOG_CACHE_TTL_SECONDS === '0' ? 'tắt' : `${c.CATALOG_CACHE_TTL_SECONDS} s`}` : ''}`;
   const line = `| ${opts.phase ?? '?'} | \`${tag}\` | ${machine2} | ${row.scenario}: ${load} | ${doubleSold} | ${row.rps.toFixed(0)} | ${ms(row.p50)} | ${ms(row.p95)} | ${ms(row.p99)} | ${errors} | ${opts.record} |\n`;
   appendFileSync(resolve(repo, 'docs/benchmarks.md'), line);
   console.log('\nRecorded in docs/benchmarks.md');
@@ -189,7 +189,7 @@ if (PAYMENT_SCENARIOS.has(opts.scenario)) {
 // The API's effective configuration, read from the running container. It is
 // printed and recorded with every result, and the container must be the same
 // one before and after the run.
-const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER'];
+const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER', 'RATE_LIMIT_ENABLED', 'CATALOG_CACHE_TTL_SECONDS'];
 function apiState() {
   // Every API replica: the set must not change during a run (except the one
   // replica that --kill-after stops on purpose).
@@ -207,6 +207,13 @@ function apiState() {
 }
 const before = apiState();
 console.log(`API config: ${JSON.stringify(before.config)}, replicas: ${before.replicas}`);
+// Every k6 VU comes from the same IP (the k6 container): with rate limiting
+// on, most requests would be 429 and the numbers would measure the limiter.
+if (before.config.RATE_LIMIT_ENABLED !== 'false') {
+  console.error('Rate limiting is on. Restart the API without it, then run again:');
+  console.error('  RATE_LIMIT_ENABLED=false docker compose up -d api');
+  process.exit(1);
+}
 
 // --no-deps: without it, `docker compose run` re-evaluates the api service
 // from .env and RECREATES it, silently discarding any configuration the API

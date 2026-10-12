@@ -1,3 +1,5 @@
+import { Throttle } from '@nestjs/throttler';
+import { HOLDS_PER_MINUTE_PER_USER } from '../../common/throttle/limits.js';
 import {
   Body,
   Controller,
@@ -33,6 +35,8 @@ export class ReservationsController {
    * header Idempotent-Replayed: true) instead of holding more tickets.
    */
   @Roles(Role.CUSTOMER)
+  // Stricter per account: holding is the expensive, contended operation.
+  @Throttle({ user: { limit: HOLDS_PER_MINUTE_PER_USER, ttl: 60_000 } })
   @Post()
   @ApiHeader({
     name: 'Idempotency-Key',

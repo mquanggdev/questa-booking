@@ -1,4 +1,7 @@
-import { Module } from '@nestjs/common';
+import { type ExecutionContext, Module } from '@nestjs/common';
+import { ThrottlerModule } from '@nestjs/throttler';
+import type { Redis } from 'ioredis';
+import { RedisThrottlerStorage } from './common/throttle/redis-throttler.storage.js';
 import { LoggerModule } from 'nestjs-pino';
 import { AppConfigService } from './config/app-config.service.js';
 import { ConfigModule } from './config/config.module.js';
@@ -13,7 +16,7 @@ import { TicketsModule } from './modules/tickets/tickets.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
-import { RedisModule } from './redis/redis.module.js';
+import { REDIS, RedisModule } from './redis/redis.module.js';
 
 @Module({
   imports: [
@@ -40,6 +43,34 @@ import { RedisModule } from './redis/redis.module.js';
     }),
     PrismaModule,
     RedisModule,
+    ThrottlerModule.forRootAsync({
+      inject: [AppConfigService, REDIS],
+      useFactory: (config: AppConfigService, redis: Redis) => ({
+        throttlers: [
+          // Every request, by client IP (X-Forwarded-For from Nginx).
+          {
+            name: 'ip',
+            ttl: 60_000,
+            limit: config.get('RATE_LIMIT_IP_PER_MINUTE'),
+          },
+          // Signed-in requests, by account: one user behind many IPs too.
+          {
+            name: 'user',
+            ttl: 60_000,
+            limit: config.get('RATE_LIMIT_USER_PER_MINUTE'),
+            getTracker: (req: { user?: { id: string } }) => req.user?.id ?? '',
+            skipIf: (ctx: ExecutionContext) =>
+              !ctx.switchToHttp().getRequest<{ user?: unknown }>().user,
+          },
+        ],
+        // Shared by all replicas.
+        storage: new RedisThrottlerStorage(redis),
+        // WebSocket messages are not throttled (the seat map is public and
+        // cheap); load tests turn limiting off.
+        skipIf: (ctx: ExecutionContext) =>
+          ctx.getType() !== 'http' || !config.get('RATE_LIMIT_ENABLED'),
+      }),
+    }),
     QueueModule,
     HealthModule,
     AuthModule,

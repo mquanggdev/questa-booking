@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtAuthGuard } from '../../common/auth/jwt-auth.guard.js';
 import { RolesGuard } from '../../common/auth/roles.guard.js';
+import { AppThrottlerGuard } from '../../common/throttle/app-throttler.guard.js';
 import { AppConfigService } from '../../config/app-config.service.js';
 import { UsersModule } from '../users/users.module.js';
 import { AuthController } from './auth.controller.js';
@@ -26,9 +27,11 @@ import { RefreshTokenService } from './refresh-token.service.js';
   providers: [
     AuthService,
     RefreshTokenService,
-    // Global guards, in order: authenticate, then authorize.
+    // Global guards, in order: authenticate, authorize, rate-limit.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // After authentication, so the per-user limit knows who is calling.
+    { provide: APP_GUARD, useClass: AppThrottlerGuard },
   ],
   exports: [JwtModule],
 })

@@ -4,7 +4,10 @@ import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
+import { ConfigService } from '@nestjs/config';
 import { configureApp } from '../../src/app.setup.js';
+import { AppConfigService } from '../../src/config/app-config.service.js';
+import type { Env } from '../../src/config/env.schema.js';
 import { RedisIoAdapter } from '../../src/redis/redis-io.adapter.js';
 import { Role } from '../../src/generated/prisma/client.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
@@ -27,11 +30,27 @@ export interface TestApp {
  * happen before init(), which is when gateways create their server.
  */
 export async function createTestApp(
-  options: { websockets?: boolean } = {},
+  options: {
+    websockets?: boolean;
+    /** Configuration values that differ from test-env.ts for this app. */
+    config?: Partial<Env>;
+  } = {},
 ): Promise<TestApp> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule],
-  }).compile();
+  const builder = Test.createTestingModule({ imports: [AppModule] });
+  if (options.config) {
+    const overrides = options.config;
+    builder.overrideProvider(AppConfigService).useFactory({
+      inject: [ConfigService],
+      factory: (config: ConfigService<Env, true>) => {
+        const real = new AppConfigService(config);
+        return {
+          get: <K extends keyof Env>(key: K): Env[K] =>
+            key in overrides ? (overrides[key] as Env[K]) : real.get(key),
+        };
+      },
+    });
+  }
+  const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>({
     logger: false,
   });

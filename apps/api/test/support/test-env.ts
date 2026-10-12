@@ -52,4 +52,7 @@ export const testEnv = {
   PUBLIC_BASE_URL: 'http://localhost:3100',
   // Three attempts with 1 s exponential backoff: the DLQ test takes ~3 s.
   REFUND_MAX_ATTEMPTS: '3',
+  // Off by default: many tests fire bursts from 127.0.0.1 on purpose
+  // (quota, IPN duplicates). rate-limit.e2e-spec.ts turns it on.
+  RATE_LIMIT_ENABLED: 'false',
 } satisfies Record<string, string>;

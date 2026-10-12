@@ -43,6 +43,11 @@ export const envSchema = z
     RESERVATION_GATE_ENABLED: z.stringbool().default(true),
     // Worker schedules: safety-net sweep of overdue orders, Redis counter repair.
     SWEEP_EVERY_MS: z.coerce.number().int().positive().default(60_000),
+    // Rate limiting (Redis counters). Off for load tests: every k6 VU comes
+    // from the same IP.
+    RATE_LIMIT_ENABLED: z.stringbool().default(true),
+    RATE_LIMIT_IP_PER_MINUTE: z.coerce.number().int().positive().default(300),
+    RATE_LIMIT_USER_PER_MINUTE: z.coerce.number().int().positive().default(120),
     // Catalog read cache in Redis (concerts, performances); 0 turns it off.
     CATALOG_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(60),
     // How often the worker publishes realtime seat-map batches (spec: 200-500 ms).

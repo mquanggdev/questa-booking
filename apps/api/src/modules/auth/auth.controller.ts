@@ -1,3 +1,5 @@
+import { Throttle } from '@nestjs/throttler';
+import { LOGIN_PER_MINUTE_PER_IP } from '../../common/throttle/limits.js';
 import {
   Body,
   Controller,
@@ -40,6 +42,8 @@ export class AuthController {
    * Returns an access token in the body and sets the refresh token as an
    * httpOnly cookie, which page scripts cannot read (XSS cannot steal it).
    */
+  // Stricter per IP: slows down password guessing (spec, "Giới hạn tốc độ").
+  @Throttle({ ip: { limit: LOGIN_PER_MINUTE_PER_IP, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
