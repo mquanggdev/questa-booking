@@ -192,12 +192,16 @@ describe('Virtual waiting room (e2e)', () => {
 
     for (const [i, p] of people.entries()) {
       const r = await join(perf.id, p).expect(200);
+      // Admitting 2 per 1 s tick: position i+1 waits ceil((i+1)/2) s.
+      const wait = Math.ceil((i + 1) / 2);
       expect(r.body).toEqual({
         status: 'WAITING',
         number: i + 1,
         position: i + 1,
         admittedThrough: 0,
         waiting: i + 1,
+        estimatedWaitSeconds: wait,
+        pollAfterMs: Math.max(wait * 250, 1000),
       });
     }
     // Joining again keeps your place.

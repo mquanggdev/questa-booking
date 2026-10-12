@@ -822,6 +822,10 @@ export interface components {
             admittedThrough?: number;
             /** @description People still waiting */
             waiting?: number;
+            /** @description WAITING: rough wait, from the admission pace and the time until the sale opens */
+            estimatedWaitSeconds?: number;
+            /** @description WAITING, for clients without the /queue WebSocket: ask GET /queue/me again after this long (1-30 s, sooner near the front) */
+            pollAfterMs?: number;
             /**
              * Format: date-time
              * @description ADMITTED: when the admission pass stops being accepted

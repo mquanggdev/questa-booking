@@ -1997,6 +1997,14 @@
             "type": "number",
             "description": "People still waiting"
           },
+          "estimatedWaitSeconds": {
+            "type": "number",
+            "description": "WAITING: rough wait, from the admission pace and the time until the sale opens"
+          },
+          "pollAfterMs": {
+            "type": "number",
+            "description": "WAITING, for clients without the /queue WebSocket: ask GET /queue/me again after this long (1-30 s, sooner near the front)"
+          },
           "expiresAt": {
             "format": "date-time",
             "type": "string",

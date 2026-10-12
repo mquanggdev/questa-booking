@@ -11,6 +11,7 @@ const info = (waitingRoomEnabled: boolean): AdmissionInfo => ({
   waitingRoomEnabled,
   openPhase: { id: 'phase', type: 'GENERAL' },
   saleAhead: true,
+  opensAt: null,
 });
 
 function service(redis: Partial<Redis>, admission: AdmissionInfo | null) {

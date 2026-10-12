@@ -38,6 +38,8 @@ export interface AdmissionInfo {
   openPhase: { id: string; type: SalePhaseType } | null;
   /** Does any sale phase end in the future? */
   saleAhead: boolean;
+  /** No phase open now: when the next one starts, if any. */
+  opensAt: Date | null;
 }
 
 export interface OnSalePerformance {
@@ -208,6 +210,10 @@ export class PerformancesService {
       waitingRoomEnabled: performance.waitingRoomEnabled ?? false,
       openPhase: open ? { id: open.id, type: open.type } : null,
       saleAhead: performance.salePhases.some((p) => now < p.endsAt),
+      opensAt: open
+        ? null
+        : (performance.salePhases.find((p) => now < p.startsAt)?.startsAt ??
+          null),
     };
   }
 

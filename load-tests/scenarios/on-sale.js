@@ -13,9 +13,9 @@
 //   pnpm loadtest on-sale                   (VUS=2000, ITERS=2 by default)
 //   pnpm loadtest on-sale --queue off
 //
-// Buyers poll GET /queue/me every POLL seconds (--poll N, default 2). The
-// web app listens on the /queue WebSocket instead; polling is the heavier,
-// worst case for the API.
+// Buyers poll GET /queue/me when the server says to (pollAfterMs, sooner
+// near the front), or every N seconds with --poll N. The web app listens
+// on the /queue WebSocket instead; polling is the heavier case for the API.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { SharedArray } from 'k6/data';
@@ -26,7 +26,8 @@ import { API, authHeaders, summaryTo, userForIteration } from '../lib/common.js'
 const VUS = Number(__ENV.VUS || 2000);
 const ITERS = Number(__ENV.ITERS || 2);
 const OPENS_AT = Number(__ENV.OPENS_AT || Date.now());
-const POLL_S = Number(__ENV.POLL || 2);
+// 0 (default): follow the server's pollAfterMs hint; N: every N seconds.
+const POLL_S = Number(__ENV.POLL || 0);
 const BYPASS_SHARE = Number(__ENV.BYPASS_SHARE || 0.05);
 
 const night = JSON.parse(open('/load-tests/data/on-sale.json'));
@@ -102,14 +103,21 @@ function queue(token) {
   if (joined.status !== 200) return false;
   const started = Date.now();
   let status = joined.json('status');
+  let pollAfter = joined.json('pollAfterMs');
   while (status !== 'ADMITTED') {
     if (Date.now() - started > 8 * 60 * 1000) return false;
-    sleep(POLL_S * (0.5 + Math.random())); // jitter: no synchronized waves
+    // The server's hint (sooner near the front), or POLL seconds; with
+    // jitter, so 2,000 buyers do not ask in synchronized waves.
+    const wait = POLL_S > 0 ? POLL_S * 1000 : (pollAfter ?? 2000);
+    sleep((wait / 1000) * (0.75 + Math.random() * 0.5));
     const me = http.get(`${API}/performances/${perf}/queue/me`, {
       ...authHeaders(token),
       tags: { name: 'GET /queue/me' },
     });
-    status = me.status === 200 ? me.json('status') : status;
+    if (me.status === 200) {
+      status = me.json('status');
+      pollAfter = me.json('pollAfterMs');
+    }
   }
   // Waiting counted from the opening: queueing before it is free.
   queueWait.add(Date.now() - Math.max(started, OPENS_AT));

@@ -10,6 +10,7 @@ import {
   type AdmissionInfo,
 } from '../concerts/performances.service.js';
 import { QueueState, type QueueStatusDto } from './dto/queue-status.dto.js';
+import { estimateWaitMs, pollAfterMs } from './queue-estimate.js';
 import {
   LINE_KEY_TTL_SECONDS,
   lineRoom,
@@ -70,7 +71,7 @@ export class WaitingRoomService {
         'There is no sale left for this performance',
       );
     }
-    return this.run(performanceId, userId, true);
+    return this.run(performanceId, userId, true, info);
   }
 
   async status(performanceId: string, userId: string): Promise<QueueStatusDto> {
@@ -78,7 +79,7 @@ export class WaitingRoomService {
     if (!info.waitingRoomEnabled) {
       return { status: QueueState.NOT_REQUIRED };
     }
-    return this.run(performanceId, userId, false);
+    return this.run(performanceId, userId, false, info);
   }
 
   /**
@@ -179,6 +180,7 @@ export class WaitingRoomService {
     performanceId: string,
     userId: string,
     join: boolean,
+    info: AdmissionInfo,
   ): Promise<QueueStatusDto> {
     const [state, a, admittedThrough, waiting] = (await joinScript.run(
       this.redis,
@@ -197,12 +199,21 @@ export class WaitingRoomService {
       };
     }
     if (state === QueueState.WAITING) {
+      const position = a - admittedThrough;
+      const waitMs = estimateWaitMs(
+        position,
+        info.opensAt ? info.opensAt.getTime() - Date.now() : 0,
+        this.config.get('WAITING_ROOM_ADMIT_PER_TICK'),
+        this.config.get('WAITING_ROOM_TICK_MS'),
+      );
       return {
         status: QueueState.WAITING,
         number: a,
-        position: a - admittedThrough,
+        position,
         admittedThrough,
         waiting,
+        estimatedWaitSeconds: Math.ceil(waitMs / 1000),
+        pollAfterMs: pollAfterMs(waitMs),
       };
     }
     return { status: QueueState.NONE, admittedThrough, waiting };
