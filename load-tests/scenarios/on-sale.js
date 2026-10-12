@@ -30,9 +30,18 @@ const OPENS_AT = Number(__ENV.OPENS_AT || Date.now());
 const POLL_S = Number(__ENV.POLL || 0);
 const BYPASS_SHARE = Number(__ENV.BYPASS_SHARE || 0.05);
 
-const night = JSON.parse(open('/load-tests/data/on-sale.json'));
-const seatIds = new SharedArray('on-sale seats', () => night.seatIds);
-const standing = night.zones.find((z) => z.type === 'STANDING');
+// SharedArray: the 300 KB file is parsed once, not once per VU (2,000
+// parses at start-up took ~10 CPU cores away from the system under test).
+const seatIds = new SharedArray('on-sale seats', () =>
+  JSON.parse(open('/load-tests/data/on-sale.json')).seatIds,
+);
+const night = new SharedArray('on-sale night', () => {
+  const data = JSON.parse(open('/load-tests/data/on-sale.json'));
+  return [{
+    performanceId: data.performanceId,
+    standingZoneId: data.zones.find((z) => z.type === 'STANDING').id,
+  }];
+})[0];
 
 const queueWait = new Trend('queue_wait', true);
 const admitted = new Counter('queue_admitted');
@@ -146,7 +155,7 @@ export default function () {
 
   const quantity = 1 + random(4);
   if (Math.random() < 0.2) {
-    const res = hold(user.token, { standing: [{ zoneId: standing.id, quantity }] });
+    const res = hold(user.token, { standing: [{ zoneId: night.standingZoneId, quantity }] });
     record(res, quantity);
     return;
   }
