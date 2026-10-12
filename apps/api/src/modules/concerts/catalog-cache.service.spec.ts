@@ -50,4 +50,43 @@ describe('CatalogCacheService', () => {
     expect(redis.get).not.toHaveBeenCalled();
     expect(load).toHaveBeenCalledOnce();
   });
+
+  it('single flight: 500 concurrent misses of one key load the record once', async () => {
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue('OK'),
+    };
+    let resolve!: (v: { id: string }) => void;
+    const load = vi.fn(() => new Promise<{ id: string }>((r) => (resolve = r)));
+    const cache = service(redis);
+    const reads = Array.from({ length: 500 }, () =>
+      cache.getOrLoad(() => 'k', load),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    resolve({ id: 'a' });
+    expect(await Promise.all(reads)).toEqual(Array(500).fill({ id: 'a' }));
+    expect(load).toHaveBeenCalledOnce();
+    expect(redis.set).toHaveBeenCalledOnce();
+
+    // Once settled, the next miss loads again (nothing is kept in memory).
+    await cache.getOrLoad(
+      () => 'k',
+      () => Promise.resolve({ id: 'b' }),
+    );
+    expect(redis.set).toHaveBeenCalledTimes(2);
+  });
+
+  it('single flight: a failed load fails every waiter and is not kept', async () => {
+    const redis = {
+      get: vi.fn().mockResolvedValue(null),
+      set: vi.fn().mockResolvedValue('OK'),
+    };
+    const cache = service(redis);
+    const failing = vi.fn().mockRejectedValue(new Error('pool exhausted'));
+    const reads = [1, 2, 3].map(() => cache.getOrLoad(() => 'k', failing));
+    for (const r of reads) await expect(r).rejects.toThrow('pool exhausted');
+    expect(failing).toHaveBeenCalledOnce();
+    const ok = vi.fn().mockResolvedValue({ id: 'a' });
+    await expect(cache.getOrLoad(() => 'k', ok)).resolves.toEqual({ id: 'a' });
+  });
 });

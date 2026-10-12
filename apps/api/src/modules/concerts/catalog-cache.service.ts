@@ -18,10 +18,15 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
  * - The TTL bounds staleness in the rare race "read old row, invalidate,
  *   write old row into the cache"; ticket availability is never cached.
  * - Redis down means "no cache", never an error (fail-open).
+ * - Single flight (phase 7b): concurrent misses of one key in this process
+ *   share one database load. At a sale's opening thousands of requests miss
+ *   the same performance at once; without it each one queried PostgreSQL.
+ *   Callers sharing a loaded value must not mutate it.
  */
 @Injectable()
 export class CatalogCacheService {
   private readonly logger = new Logger(CatalogCacheService.name);
+  private readonly loading = new Map<string, Promise<unknown>>();
 
   constructor(
     @Inject(REDIS) private readonly redis: Redis,
@@ -47,7 +52,7 @@ export class CatalogCacheService {
     load: () => Promise<T | null>,
   ): Promise<T | null> {
     if (this.ttl === 0) return load();
-    let cacheKey: string | null = null;
+    let cacheKey: string;
     try {
       cacheKey = await key();
       const hit = await this.redis.get(cacheKey);
@@ -60,8 +65,21 @@ export class CatalogCacheService {
       this.logger.warn(`Catalog cache read failed: ${String(error)}`);
       return load();
     }
+    const pending = this.loading.get(cacheKey) as Promise<T | null> | undefined;
+    if (pending) return pending;
+    const loaded = this.loadAndStore(cacheKey, load).finally(() =>
+      this.loading.delete(cacheKey),
+    );
+    this.loading.set(cacheKey, loaded);
+    return loaded;
+  }
+
+  private async loadAndStore<T>(
+    cacheKey: string,
+    load: () => Promise<T | null>,
+  ): Promise<T | null> {
     const value = await load();
-    if (value !== null && cacheKey !== null) {
+    if (value !== null) {
       await this.redis
         .set(cacheKey, JSON.stringify(value), 'EX', this.ttl)
         .catch((error: unknown) =>
