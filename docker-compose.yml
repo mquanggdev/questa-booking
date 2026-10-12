@@ -17,6 +17,7 @@ x-api-env: &api-env
   RESERVATION_GATE_ENABLED: ${RESERVATION_GATE_ENABLED:-true}
   SWEEP_EVERY_MS: ${SWEEP_EVERY_MS:-60000}
   RECONCILE_EVERY_MS: ${RECONCILE_EVERY_MS:-30000}
+  SEAT_BROADCAST_EVERY_MS: ${SEAT_BROADCAST_EVERY_MS:-250}
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
   DB_TX_MAX_WAIT_MS: ${DB_TX_MAX_WAIT_MS:-2000}
   DB_TX_TIMEOUT_MS: ${DB_TX_TIMEOUT_MS:-10000}
@@ -85,8 +86,10 @@ services:
       dockerfile: apps/api/Dockerfile
       target: runtime
     environment: *api-env
-    ports:
-      - '${API_PORT:-3000}:3000'
+    # Several identical replicas behind Nginx (phase 7a). No host port: they
+    # are reached through Nginx, which balances between them.
+    deploy:
+      replicas: ${API_REPLICAS:-2}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -126,8 +129,6 @@ services:
         API_INTERNAL_URL: http://api:3000
     environment:
       API_INTERNAL_URL: http://api:3000
-    ports:
-      - '${WEB_PORT:-3200}:3000'
     depends_on:
       api:
         condition: service_healthy
@@ -138,6 +139,30 @@ services:
       retries: 5
     mem_limit: 384m
 
+  # The single entry point: pages to `web`, /api and WebSocket to the API
+  # replicas (docker/nginx/default.conf). Both host ports reach it, so
+  # http://localhost:${WEB_PORT} and http://localhost:${API_PORT}/api keep
+  # working as before.
+  nginx:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/proxy-headers.inc:/etc/nginx/conf.d/proxy-headers.inc:ro
+    ports:
+      - '${WEB_PORT:-3200}:80'
+      - '${API_PORT:-3000}:80'
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1/api/v1/health']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+
   # Load generator, only with `--profile loadtest` (see load-tests/run.mjs).
   # Runs inside the compose network and calls the API directly, not through
   # the host port, so Windows/macOS port forwarding does not skew results.
@@ -145,11 +170,12 @@ services:
     image: grafana/k6:2.3.0
     profiles: ['loadtest']
     environment:
-      BASE_URL: http://api:3000
+      # Through Nginx, like real traffic: load is spread over the replicas.
+      BASE_URL: http://nginx
     volumes:
       - ./load-tests:/load-tests
     depends_on:
-      api:
+      nginx:
         condition: service_healthy
 
 volumes:

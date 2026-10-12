@@ -5,15 +5,37 @@ import {
   type OpenAPIObject,
 } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { hostname } from 'node:os';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { createValidationPipe } from './common/pipes/validation.pipe.js';
 import { AppConfigService } from './config/app-config.service.js';
 
 export const API_PREFIX = 'api/v1';
 
+/** The container hostname: unique per replica in Docker. */
+export const INSTANCE_ID = hostname();
+
 // Shared by main.ts and the e2e tests, so tests exercise the exact same
 // pipeline (prefix, validation, error format, cookies) as production.
 export function configureApp(app: INestApplication): void {
+  const express = app.getHttpAdapter().getInstance() as {
+    set(name: string, value: unknown): void;
+  };
+  // Behind Nginx (phase 7a): take the client IP from X-Forwarded-For, but
+  // only when the request comes from a loopback or private-network proxy.
+  // A client on the internet cannot spoof its IP by sending the header.
+  express.set('trust proxy', 'loopback, uniquelocal');
+  // Which replica answered: lets tests and demos see the load balancing.
+  app.use(
+    (
+      _req: unknown,
+      res: { setHeader(k: string, v: string): void },
+      next: () => void,
+    ) => {
+      res.setHeader('X-Instance', INSTANCE_ID);
+      next();
+    },
+  );
   app.setGlobalPrefix(API_PREFIX);
   app.use(cookieParser());
   app.useGlobalPipes(createValidationPipe());

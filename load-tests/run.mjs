@@ -6,11 +6,12 @@
 //   pnpm loadtest browse --rate 300 --duration 30s
 //   pnpm loadtest webhook-chaos | full-flow | check-in   (phase 5, fake gateway)
 //   pnpm loadtest contention --record "phase 2 naive"   (appends to docs/benchmarks.md)
+//   pnpm loadtest contention --kill-after 5               (kills one API replica 5 s in)
 //
 // Steps: reset the target performance (write scenarios) -> k6 in Docker ->
 // invariant SQL -> printed report (+ optional benchmark row).
 // Needs: docker compose up, and `pnpm --filter @questa/api db:seed` once.
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -109,7 +110,8 @@ function report(scenario, summary, verify) {
 
 function record(row, opts) {
   const tag = sh(['git', 'describe', '--tags', '--always', '--dirty'], { quiet: true }).trim();
-  const machine = 'R5 4600H, 16 GB; Docker 7.7 GB; 1 API (512 MB)';
+  const replicas = row.apiReplicas ?? 1;
+  const machine = `R5 4600H, 16 GB; Docker 7.7 GB; ${replicas} API (512 MB)${replicas > 1 ? ' sau Nginx' : ''}${row.killed ? `, giết ${row.killed} giữa chừng` : ''}`;
   const load = row.scenario === 'browse'
     ? `${opts.rate ?? 200} req/s × ${opts.duration ?? '30s'}`
     : row.scenario === 'quota'
@@ -189,23 +191,51 @@ if (PAYMENT_SCENARIOS.has(opts.scenario)) {
 // one before and after the run.
 const CONFIG_KEYS = ['SEAT_HOLD_STRATEGY', 'RESERVATION_GATE_ENABLED', 'DB_POOL_MAX', 'DB_TX_MAX_WAIT_MS', 'PAYMENT_PROVIDER'];
 function apiState() {
-  const id = sh(['docker', 'inspect', '-f', '{{.Id}}', 'questa-api-1'], { quiet: true }).trim();
+  // Every API replica: the set must not change during a run (except the one
+  // replica that --kill-after stops on purpose).
+  const ids = sh(['docker', 'compose', 'ps', '-q', 'api'], { quiet: true })
+    .split(String.fromCharCode(10))
+    .map((v) => v.trim())
+    .filter(Boolean)
+    .sort();
+  const id = ids.join(',');
   const values = sh(['docker', 'compose', 'exec', '-T', 'api', 'printenv', ...CONFIG_KEYS], { quiet: true })
     .trim()
     .split(String.fromCharCode(10)) // newline; trim() drops a trailing CR
     .map((v) => v.trim());
-  return { id, config: Object.fromEntries(CONFIG_KEYS.map((k, i) => [k, values[i]])) };
+  return { id, replicas: ids.length, config: Object.fromEntries(CONFIG_KEYS.map((k, i) => [k, values[i]])) };
 }
 const before = apiState();
-console.log(`API config: ${JSON.stringify(before.config)}`);
+console.log(`API config: ${JSON.stringify(before.config)}, replicas: ${before.replicas}`);
 
 // --no-deps: without it, `docker compose run` re-evaluates the api service
 // from .env and RECREATES it, silently discarding any configuration the API
 // was started with (this invalidated earlier comparisons; see ADR-0011).
-sh(['docker', 'compose', '--profile', 'loadtest', 'run', '--rm', '--no-deps', ...env, 'k6', 'run', '--quiet',
-  `/load-tests/scenarios/${opts.scenario}.js`]);
+const k6Args = ['compose', '--profile', 'loadtest', 'run', '--rm', '--no-deps', ...env, 'k6', 'run', '--quiet',
+  `/load-tests/scenarios/${opts.scenario}.js`];
+let killed = null;
+if (opts['kill-after'] === undefined) {
+  sh(['docker', ...k6Args]);
+} else {
+  // Phase 7a: a replica dies mid-run, like a crash (SIGKILL, no graceful
+  // shutdown). Nginx must route around it and no invariant may break.
+  const victim = sh(['docker', 'compose', 'ps', '-q', 'api'], { quiet: true }).trim().split(String.fromCharCode(10)).pop().trim();
+  const k6 = spawn('docker', k6Args, { cwd: repo, stdio: 'inherit' });
+  const timer = setTimeout(() => {
+    killed = sh(['docker', 'inspect', '-f', '{{.Name}}', victim], { quiet: true }).trim().replace(/^\//, '');
+    sh(['docker', 'kill', victim], { quiet: true });
+    console.log(`
+>>> killed ${killed} after ${opts['kill-after']} s`);
+  }, Number(opts['kill-after']) * 1000);
+  const code = await new Promise((done) => k6.on('exit', done));
+  clearTimeout(timer);
+  if (code !== 0) throw new Error(`k6 exited with ${code}`);
+  if (killed) sh(['docker', 'start', victim], { quiet: true });
+}
 
 const after = apiState();
+// A killed replica is restarted above (same container id), so the set of
+// replicas must still be exactly the one measured.
 if (after.id !== before.id || JSON.stringify(after.config) !== JSON.stringify(before.config)) {
   console.error(`The API container changed during the run (${JSON.stringify(before)} -> ${JSON.stringify(after)}). Result discarded.`);
   process.exit(1);
@@ -224,5 +254,5 @@ if (PAYMENT_SCENARIOS.has(opts.scenario)) {
     verify.i6Violations = Math.abs(accepted - verify.ticketsCheckedIn) + Math.max(accepted - tickets, 0);
   }
 }
-const row = { ...report(opts.scenario, summary, verify), apiConfig: before.config };
+const row = { ...report(opts.scenario, summary, verify), apiConfig: before.config, apiReplicas: before.replicas, killed };
 if (opts.record) record(row, opts);
