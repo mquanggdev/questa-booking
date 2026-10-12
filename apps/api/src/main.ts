@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { Server as HttpServer } from 'node:http';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
@@ -33,6 +34,15 @@ async function bootstrap(): Promise<void> {
     backlog: number,
   ) => Promise<unknown>;
   await listen(port, '0.0.0.0', HTTP_LISTEN_BACKLOG);
+
+  // Nginx keeps idle upstream connections open for 60 s (keepalive_timeout
+  // in docker/nginx/default.conf). Node closed them after 5 s by default,
+  // so Nginx sometimes sent a request on a socket Node was closing and got
+  // a reset; with max_fails that took a healthy replica out of rotation.
+  // The side that closes idle connections must be Nginx: Node waits longer.
+  const server = app.getHttpServer() as HttpServer;
+  server.keepAliveTimeout = 65_000;
+  server.headersTimeout = 66_000; // must exceed keepAliveTimeout
 }
 
 await bootstrap();
