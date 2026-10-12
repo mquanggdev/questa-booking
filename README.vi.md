@@ -1,10 +1,12 @@
 # Questa Booking
 
-[English](README.md) | **Tiếng Việt**
+[English](README.md) | **Tiếng Việt** &nbsp; [![CI](https://github.com/mquanggdev/questa-booking/actions/workflows/ci.yml/badge.svg)](https://github.com/mquanggdev/questa-booking/actions/workflows/ci.yml)
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 5: thanh toán qua IPN có chữ ký (VNPay sandbox, cùng một cổng giả lập nói đúng giao thức đó), hoàn tiền có retry bằng BullMQ và dead letter queue, hủy đêm diễn kèm hoàn tiền hàng loạt, vé QR, và check-in chỉ nhận mỗi vé đúng một lần.
+> **Trạng thái:** Xong giai đoạn 6: trang web Next.js để mua vé (sơ đồ ghế trên canvas, giữ vé có đếm ngược, thanh toán, vé QR), được test bằng Playwright trên trình duyệt thật với toàn bộ stack Docker ở mỗi lần push. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền. Bản demo online có ở giai đoạn 9.
+
+![Mua vé: đăng ký, chọn ghế và vé đứng, giữ vé, thanh toán ở cổng giả lập, nhận vé QR](docs/assets/buying-flow.gif)
 
 ## Bài toán
 

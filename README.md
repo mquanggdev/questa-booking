@@ -1,10 +1,12 @@
 # Questa Booking
 
-**English** | [Tiếng Việt](README.vi.md)
+**English** | [Tiếng Việt](README.vi.md) &nbsp; [![CI](https://github.com/mquanggdev/questa-booking/actions/workflows/ci.yml/badge.svg)](https://github.com/mquanggdev/questa-booking/actions/workflows/ci.yml)
 
 A concert ticketing backend built to sell exactly the seats that exist when thousands of people buy at the same moment, and to prove it with numbers.
 
-> **Status:** Phase 5 done: payments through a signed IPN (VNPay sandbox, plus a local fake gateway speaking the same protocol), refunds retried by BullMQ with a dead letter queue, performance cancellation with bulk refunds, QR tickets and a check-in that accepts each ticket exactly once.
+> **Status:** Phase 6 done: a Next.js web app for buying tickets (canvas seat map, holds with a countdown, payment, QR tickets), tested with Playwright in a real browser against the full Docker stack on every push. Earlier phases: database guards against double-selling, a Redis filter, expiring holds, payments through a signed IPN with refunds. An online demo comes with phase 9.
+
+![Buying tickets: sign up, pick seats and standing tickets, hold, pay at the fake gateway, get QR tickets](docs/assets/buying-flow.gif)
 
 ## The problem
 
