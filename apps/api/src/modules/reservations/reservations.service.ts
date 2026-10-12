@@ -16,6 +16,7 @@ import {
   RESERVATIONS_QUEUE,
   ReservationJob,
 } from '../../queue/queue.constants.js';
+import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService, type SeatHoldStrategy } from '../seats/seats.service.js';
 import { HoldGateService } from './gate/hold-gate.service.js';
 import type { CreateReservationDto } from './dto/create-reservation.dto.js';
@@ -74,6 +75,7 @@ export class ReservationsService {
     private readonly zones: ZonesService,
     private readonly orders: OrdersService,
     private readonly gate: HoldGateService,
+    private readonly seatEvents: SeatEventsService,
     private readonly config: AppConfigService,
     @InjectQueue(RESERVATIONS_QUEUE) private readonly queue: Queue,
   ) {}
@@ -119,6 +121,11 @@ export class ReservationsService {
     }
     await this.gate.commit(ticket);
     await this.scheduleExpiry(result.order.id, result.order.expiresAt);
+    // Realtime seat map: these seats and zones changed (after the commit).
+    await this.seatEvents.markChanged(dto.performanceId, {
+      seatIds: result.order.items.flatMap((i) => (i.seatId ? [i.seatId] : [])),
+      zoneIds: [...new Set(result.order.items.map((i) => i.zoneId))],
+    });
     return result;
   }
 

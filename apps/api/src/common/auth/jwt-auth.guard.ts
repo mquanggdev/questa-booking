@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { WsException } from '@nestjs/websockets';
 import { Role } from '../../generated/prisma/client.js';
 import { AppException } from '../errors/app.exception.js';
 import { ErrorCode } from '../errors/error-codes.js';
@@ -32,18 +33,32 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const token = extractBearerToken(request.headers.authorization);
+    // HTTP: "Authorization: Bearer <token>". WebSocket (Socket.IO): the
+    // client sends the token in the handshake (`auth: { token }`), and the
+    // user is kept on socket.data for the connection's lifetime.
+    const ws = context.getType() === 'ws';
+    const holder: { user?: AuthUser } = ws
+      ? (context.switchToWs().getClient<WsClient>().data ??= {})
+      : context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const token = ws
+      ? wsToken(context.switchToWs().getClient<WsClient>())
+      : extractBearerToken(
+          context.switchToHttp().getRequest<AuthenticatedRequest>().headers
+            .authorization,
+        );
 
     if (token) {
       const user = await this.verify(token);
       if (user) {
-        request.user = user;
+        holder.user = user;
         return true;
       }
     }
     if (isPublic) {
       return true;
+    }
+    if (ws) {
+      throw new WsException('Missing or invalid access token');
     }
     throw new AppException(
       HttpStatus.UNAUTHORIZED,
@@ -63,6 +78,17 @@ export class JwtAuthGuard implements CanActivate {
       return null;
     }
   }
+}
+
+/** The parts of a Socket.IO socket the guards use. */
+export interface WsClient {
+  handshake?: { auth?: Record<string, unknown> };
+  data?: { user?: AuthUser };
+}
+
+function wsToken(client: WsClient): string | null {
+  const token = client.handshake?.auth?.token;
+  return typeof token === 'string' && token !== '' ? token : null;
 }
 
 function extractBearerToken(header: string | undefined): string | null {

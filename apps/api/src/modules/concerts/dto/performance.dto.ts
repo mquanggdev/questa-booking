@@ -214,6 +214,12 @@ export class SeatMapResponseDto {
   @ApiProperty({ format: 'uuid' })
   performanceId: string;
 
+  @ApiProperty({
+    description:
+      'Snapshot sequence number: apply only realtime batches with a greater seq (WebSocket /seats)',
+  })
+  seq: number;
+
   @ApiProperty({ type: [ZoneAvailabilityDto] })
   zones: ZoneAvailabilityDto[];
 

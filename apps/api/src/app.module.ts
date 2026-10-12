@@ -8,6 +8,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ReservationsModule } from './modules/reservations/reservations.module.js';
+import { SeatsRealtimeModule } from './modules/seats/seats-realtime.module.js';
 import { TicketsModule } from './modules/tickets/tickets.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -48,6 +49,7 @@ import { RedisModule } from './redis/redis.module.js';
     ReservationsModule,
     PaymentsModule,
     TicketsModule,
+    SeatsRealtimeModule,
   ],
 })
 export class AppModule {}

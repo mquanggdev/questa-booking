@@ -25,6 +25,12 @@ export interface ReleasedItem {
   seatId: string | null;
 }
 
+/** An order closed by closePending: its performance and released items. */
+export interface ClosedOrder {
+  performanceId: string;
+  items: ReleasedItem[];
+}
+
 export interface NewOrderItem {
   zoneId: string;
   seatId: string | null;
@@ -142,35 +148,42 @@ export class OrdersService {
       | { to: 'EXPIRED'; graceSeconds: number }
       // userId: the owner cancels; absent: the system cancels (performance cancelled).
       | { to: 'CANCELLED'; userId?: string },
-  ): Promise<ReleasedItem[] | null> {
-    const changed =
+  ): Promise<ClosedOrder | null> {
+    // RETURNING performance_id: the realtime seat map must know which
+    // performance to refresh.
+    type Row = { performanceId: string };
+    const closed =
       close.to === 'EXPIRED'
-        ? await tx.$executeRaw`
+        ? await tx.$queryRaw<Row[]>`
             UPDATE orders SET status = 'EXPIRED', updated_at = now()
             WHERE id = ${orderId}::uuid
               AND status = 'PENDING'
               AND expires_at + ${close.graceSeconds} * interval '1 second' <= now()
+            RETURNING performance_id AS "performanceId"
           `
         : close.userId
-          ? await tx.$executeRaw`
+          ? await tx.$queryRaw<Row[]>`
               UPDATE orders SET status = 'CANCELLED', updated_at = now()
               WHERE id = ${orderId}::uuid
                 AND status = 'PENDING'
                 AND user_id = ${close.userId}::uuid
+              RETURNING performance_id AS "performanceId"
             `
-          : await tx.$executeRaw`
+          : await tx.$queryRaw<Row[]>`
               UPDATE orders SET status = 'CANCELLED', updated_at = now()
               WHERE id = ${orderId}::uuid AND status = 'PENDING'
+              RETURNING performance_id AS "performanceId"
             `;
-    if (changed === 0) {
+    if (closed.length === 0) {
       return null;
     }
     // released_at frees the seat for the partial unique index (I1).
-    return tx.$queryRaw<ReleasedItem[]>`
+    const items = await tx.$queryRaw<ReleasedItem[]>`
       UPDATE order_items SET released_at = now()
       WHERE order_id = ${orderId}::uuid AND released_at IS NULL
       RETURNING zone_id AS "zoneId", seat_id AS "seatId"
     `;
+    return { performanceId: closed[0].performanceId, items };
   }
 
   /**

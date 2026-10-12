@@ -4,7 +4,10 @@ import { AppConfigService } from './config/app-config.service.js';
 import { ConfigModule } from './config/config.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { PaymentsProcessor } from './modules/payments/payments.processor.js';
+import { ConcertsModule } from './modules/concerts/concerts.module.js';
 import { ReservationsModule } from './modules/reservations/reservations.module.js';
+import { SeatBroadcastService } from './modules/seats/seat-broadcast.service.js';
+import { SeatsModule } from './modules/seats/seats.module.js';
 import { ReservationsProcessor } from './modules/reservations/reservations.processor.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
@@ -31,7 +34,9 @@ import { RedisModule } from './redis/redis.module.js';
     QueueModule,
     ReservationsModule,
     PaymentsModule,
+    ConcertsModule,
+    SeatsModule,
   ],
-  providers: [ReservationsProcessor, PaymentsProcessor],
+  providers: [ReservationsProcessor, PaymentsProcessor, SeatBroadcastService],
 })
 export class WorkerModule {}

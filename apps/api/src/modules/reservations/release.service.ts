@@ -6,6 +6,7 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import { OrdersService, type ReleasedItem } from '../orders/orders.service.js';
+import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { HoldGateService } from './gate/hold-gate.service.js';
 import type { StandingSelection } from './reservation-request.js';
@@ -28,6 +29,7 @@ export class ReleaseService {
     private readonly seats: SeatsService,
     private readonly zones: ZonesService,
     private readonly gate: HoldGateService,
+    private readonly seatEvents: SeatEventsService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -92,9 +94,9 @@ export class ReleaseService {
     orderId: string,
     close: CloseRequest,
   ): Promise<ReleasedSet | null> {
-    const released = await this.orders.closePending(tx, orderId, close);
-    if (!released) return null;
-    const set = group(released);
+    const closed = await this.orders.closePending(tx, orderId, close);
+    if (!closed) return null;
+    const set = group(closed.performanceId, closed.items);
     await this.seats.release(tx, set.seatIds);
     for (const s of set.standing) {
       await this.zones.releaseStanding(tx, s.zoneId, s.quantity);
@@ -102,11 +104,17 @@ export class ReleaseService {
     return set;
   }
 
-  /** Redis bookkeeping once the release has committed in PostgreSQL. */
-  afterCommit(set: ReleasedSet | null): Promise<void> {
-    return set
-      ? this.gate.release(set.seatIds, set.standing)
-      : Promise.resolve();
+  /**
+   * Redis bookkeeping once the release has committed in PostgreSQL: give the
+   * tickets back to the gate, and mark the seats for the realtime seat map.
+   */
+  async afterCommit(set: ReleasedSet | null): Promise<void> {
+    if (!set) return;
+    await this.gate.release(set.seatIds, set.standing);
+    await this.seatEvents.markChanged(set.performanceId, {
+      seatIds: set.seatIds,
+      zoneIds: set.zoneIds,
+    });
   }
 
   private async release(
@@ -122,13 +130,16 @@ export class ReleaseService {
 }
 
 export interface ReleasedSet {
+  performanceId: string;
   seatIds: string[];
   standing: StandingSelection[];
+  /** Every zone touched, seated or standing (for the realtime seat map). */
+  zoneIds: string[];
 }
 
 type CloseRequest = Parameters<OrdersService['closePending']>[2];
 
-function group(items: ReleasedItem[]): ReleasedSet {
+function group(performanceId: string, items: ReleasedItem[]): ReleasedSet {
   const seatIds: string[] = [];
   const perZone = new Map<string, number>();
   for (const item of items) {
@@ -139,7 +150,9 @@ function group(items: ReleasedItem[]): ReleasedSet {
     }
   }
   return {
+    performanceId,
     seatIds,
     standing: [...perZone].map(([zoneId, quantity]) => ({ zoneId, quantity })),
+    zoneIds: [...new Set(items.map((i) => i.zoneId))],
   };
 }

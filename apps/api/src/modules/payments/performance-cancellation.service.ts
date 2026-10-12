@@ -13,6 +13,7 @@ import { PerformancesService } from '../concerts/performances.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import { OrdersService } from '../orders/orders.service.js';
 import { ReleaseService } from '../reservations/release.service.js';
+import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import { RefundsService } from './refunds.service.js';
@@ -37,6 +38,7 @@ export class PerformanceCancellationService {
     private readonly seats: SeatsService,
     private readonly zones: ZonesService,
     private readonly tickets: TicketsService,
+    private readonly seatEvents: SeatEventsService,
     private readonly refunds: RefundsService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly queue: Queue,
   ) {}
@@ -78,10 +80,12 @@ export class PerformanceCancellationService {
       );
       let progress = 0;
       for (const id of ids) {
-        const refundIds = await this.prisma.$transaction((tx) =>
-          this.refundPaidOrder(tx, id),
+        const { refundIds, seatIds, zoneIds } = await this.prisma.$transaction(
+          (tx) => this.refundPaidOrder(tx, id),
         );
         await this.refunds.enqueue(refundIds);
+        // The seats went back to AVAILABLE: refresh open seat maps.
+        await this.seatEvents.markChanged(performanceId, { seatIds, zoneIds });
         if (refundIds.length > 0) progress += 1;
       }
       refunded += progress;
@@ -102,13 +106,11 @@ export class PerformanceCancellationService {
   private async refundPaidOrder(
     tx: Prisma.TransactionClient,
     orderId: string,
-  ): Promise<string[]> {
+  ): Promise<{ refundIds: string[]; seatIds: string[]; zoneIds: string[] }> {
     const items = await this.orders.unpay(tx, orderId);
-    if (!items) return [];
-    await this.seats.unsell(
-      tx,
-      items.flatMap((i) => (i.seatId ? [i.seatId] : [])),
-    );
+    if (!items) return { refundIds: [], seatIds: [], zoneIds: [] };
+    const seatIds = items.flatMap((i) => (i.seatId ? [i.seatId] : []));
+    await this.seats.unsell(tx, seatIds);
     const perZone = new Map<string, number>();
     for (const item of items) {
       if (!item.seatId) {
@@ -137,7 +139,11 @@ export class PerformanceCancellationService {
         ),
       );
     }
-    return refundIds;
+    return {
+      refundIds,
+      seatIds,
+      zoneIds: [...new Set(items.map((i) => i.zoneId))],
+    };
   }
 
   /**

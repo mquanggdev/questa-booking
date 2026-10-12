@@ -12,6 +12,7 @@ import {
   ReleaseService,
   type ReleasedSet,
 } from '../reservations/release.service.js';
+import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
 import type {
@@ -44,6 +45,8 @@ interface Settlement {
   outcome: 'paid' | 'refund' | 'duplicate';
   released: ReleasedSet | null;
   refundId: string | null;
+  /** Seats and zones sold by this payment (realtime seat map). */
+  sold?: { performanceId: string; seatIds: string[]; zoneIds: string[] };
 }
 
 /** IPN answers after which VNPay stops delivering. */
@@ -81,6 +84,7 @@ export class PaymentsService {
     private readonly tickets: TicketsService,
     private readonly release: ReleaseService,
     private readonly refunds: RefundsService,
+    private readonly seatEvents: SeatEventsService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -201,6 +205,10 @@ export class PaymentsService {
     const settlement = await this.settle(payment, callback, query);
     // Redis and BullMQ only after the commit (ADR-0010).
     await this.release.afterCommit(settlement.released);
+    if (settlement.sold) {
+      const { performanceId, ...change } = settlement.sold;
+      await this.seatEvents.markChanged(performanceId, change);
+    }
     if (settlement.refundId) {
       await this.refunds.enqueue([settlement.refundId]);
     }
@@ -267,7 +275,16 @@ export class PaymentsService {
           const items = await this.orders.markPaid(tx, order.id, grace);
           if (items) {
             await this.fulfil(tx, items);
-            return { outcome: 'paid', released: null, refundId: null };
+            return {
+              outcome: 'paid',
+              released: null,
+              refundId: null,
+              sold: {
+                performanceId: order.performanceId,
+                seatIds: items.flatMap((i) => (i.seatId ? [i.seatId] : [])),
+                zoneIds: [...new Set(items.map((i) => i.zoneId))],
+              },
+            };
           }
         }
 

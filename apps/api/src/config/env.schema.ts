@@ -43,6 +43,13 @@ export const envSchema = z
     RESERVATION_GATE_ENABLED: z.stringbool().default(true),
     // Worker schedules: safety-net sweep of overdue orders, Redis counter repair.
     SWEEP_EVERY_MS: z.coerce.number().int().positive().default(60_000),
+    // How often the worker publishes realtime seat-map batches (spec: 200-500 ms).
+    SEAT_BROADCAST_EVERY_MS: z.coerce
+      .number()
+      .int()
+      .min(50)
+      .max(5000)
+      .default(250),
     RECONCILE_EVERY_MS: z.coerce.number().int().positive().default(30_000),
     // Payments (phase 5). "fake" speaks the VNPay protocol against a local
     // simulated gateway; it is refused in production.

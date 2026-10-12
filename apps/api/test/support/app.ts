@@ -5,6 +5,7 @@ import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { AppModule } from '../../src/app.module.js';
 import { configureApp } from '../../src/app.setup.js';
+import { RedisIoAdapter } from '../../src/redis/redis-io.adapter.js';
 import { Role } from '../../src/generated/prisma/client.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
 import { Redis } from 'ioredis';
@@ -21,7 +22,13 @@ export interface TestApp {
   close: () => Promise<void>;
 }
 
-export async function createTestApp(): Promise<TestApp> {
+/**
+ * websockets: install the Redis Socket.IO adapter, as main.ts does. It must
+ * happen before init(), which is when gateways create their server.
+ */
+export async function createTestApp(
+  options: { websockets?: boolean } = {},
+): Promise<TestApp> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
   }).compile();
@@ -29,6 +36,11 @@ export async function createTestApp(): Promise<TestApp> {
     logger: false,
   });
   configureApp(app);
+  if (options.websockets) {
+    const adapter = new RedisIoAdapter(app, process.env.REDIS_URL ?? '');
+    await adapter.connect();
+    app.useWebSocketAdapter(adapter);
+  }
   await app.init();
   return {
     app,

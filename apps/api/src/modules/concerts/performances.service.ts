@@ -16,6 +16,7 @@ import {
   type CancelPerformanceData,
 } from '../../queue/queue.constants.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { ConcertsService, isOwner } from './concerts.service.js';
 import type {
@@ -52,6 +53,7 @@ export class PerformancesService {
     private readonly prisma: PrismaService,
     private readonly concerts: ConcertsService,
     private readonly seats: SeatsService,
+    private readonly seatEvents: SeatEventsService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly payments: Queue,
   ) {}
 
@@ -284,6 +286,10 @@ export class PerformancesService {
     viewer: AuthUser | undefined,
   ): Promise<SeatMapResponseDto> {
     const performance = await this.getVisible(id, viewer);
+    // seq BEFORE the seats and counters: every change with a seq up to this
+    // one committed before the queries below, so it is in this snapshot.
+    // Clients then apply only batches with a greater seq (SeatEventsService).
+    const seq = await this.seatEvents.currentSeq(id);
     const zoneCounts = await this.prisma.zone.findMany({
       where: { performanceId: id },
       select: { id: true, heldCount: true, soldCount: true },
@@ -295,6 +301,7 @@ export class PerformancesService {
     const counts = new Map(zoneCounts.map((z) => [z.id, z]));
     return {
       performanceId: id,
+      seq,
       zones: performance.zones.map((zone) => {
         const c = counts.get(zone.id);
         const available =
@@ -312,6 +319,38 @@ export class PerformancesService {
       }),
       seats,
     };
+  }
+
+  /**
+   * Tickets left in some zones of a performance, for the realtime flusher:
+   * free seats in a seated zone, capacity minus held and sold when standing.
+   */
+  async zoneAvailability(
+    zoneIds: readonly string[],
+  ): Promise<{ id: string; available: number }[]> {
+    if (zoneIds.length === 0) return [];
+    const zones = await this.prisma.zone.findMany({
+      where: { id: { in: [...zoneIds] } },
+      select: {
+        id: true,
+        type: true,
+        capacity: true,
+        heldCount: true,
+        soldCount: true,
+      },
+    });
+    const free = await this.seats.countAvailableInZones(
+      zones.filter((z) => z.type === ZoneType.SEATED).map((z) => z.id),
+    );
+    return zones.map((z) => ({
+      id: z.id,
+      available: Math.max(
+        z.type === ZoneType.SEATED
+          ? (free.get(z.id) ?? 0)
+          : z.capacity - z.heldCount - z.soldCount,
+        0,
+      ),
+    }));
   }
 
   private async assertOwner(id: string, organizer: AuthUser) {

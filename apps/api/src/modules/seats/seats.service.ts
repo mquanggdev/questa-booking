@@ -304,4 +304,28 @@ export class SeatsService {
     });
     return new Map(groups.map((g) => [g.zoneId, g._count._all]));
   }
+
+  /** Current status of some seats (the realtime flusher's read). */
+  statusesOf(
+    seatIds: readonly string[],
+  ): Promise<{ id: string; zoneId: string; status: SeatStatus }[]> {
+    if (seatIds.length === 0) return Promise.resolve([]);
+    return this.prisma.seat.findMany({
+      where: { id: { in: [...seatIds] } },
+      select: { id: true, zoneId: true, status: true },
+    });
+  }
+
+  /** AVAILABLE seats per zone, for some zones only. */
+  async countAvailableInZones(
+    zoneIds: readonly string[],
+  ): Promise<Map<string, number>> {
+    if (zoneIds.length === 0) return new Map();
+    const groups = await this.prisma.seat.groupBy({
+      by: ['zoneId'],
+      where: { zoneId: { in: [...zoneIds] }, status: 'AVAILABLE' },
+      _count: { _all: true },
+    });
+    return new Map(groups.map((g) => [g.zoneId, g._count._all]));
+  }
 }
