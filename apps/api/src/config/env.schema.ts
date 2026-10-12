@@ -64,11 +64,7 @@ export const envSchema = z
     // replicas on the dev machine hold tickets fast at 50 admitted buyers
     // per second and saturate at 100 (docs/benchmarks.md, on-sale).
     WAITING_ROOM_TICK_MS: z.coerce.number().int().min(100).default(1000),
-    WAITING_ROOM_ADMIT_PER_TICK: z.coerce
-      .number()
-      .int()
-      .positive()
-      .default(50),
+    WAITING_ROOM_ADMIT_PER_TICK: z.coerce.number().int().positive().default(50),
     WAITING_ROOM_PASS_TTL_SECONDS: z.coerce
       .number()
       .int()
