@@ -43,6 +43,8 @@ export const envSchema = z
     RESERVATION_GATE_ENABLED: z.stringbool().default(true),
     // Worker schedules: safety-net sweep of overdue orders, Redis counter repair.
     SWEEP_EVERY_MS: z.coerce.number().int().positive().default(60_000),
+    // Catalog read cache in Redis (concerts, performances); 0 turns it off.
+    CATALOG_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(60),
     // How often the worker publishes realtime seat-map batches (spec: 200-500 ms).
     SEAT_BROADCAST_EVERY_MS: z.coerce
       .number()

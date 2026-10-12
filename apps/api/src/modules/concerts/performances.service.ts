@@ -18,6 +18,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
+import { CatalogCacheService } from './catalog-cache.service.js';
 import { ConcertsService, isOwner } from './concerts.service.js';
 import type {
   CreatePerformanceDto,
@@ -54,6 +55,7 @@ export class PerformancesService {
     private readonly concerts: ConcertsService,
     private readonly seats: SeatsService,
     private readonly seatEvents: SeatEventsService,
+    private readonly cache: CatalogCacheService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly payments: Queue,
   ) {}
 
@@ -155,6 +157,7 @@ export class PerformancesService {
       { timeout: 30_000 },
     );
 
+    await this.cache.invalidate({ concertId });
     return this.getVisible(id, organizer);
   }
 
@@ -162,10 +165,15 @@ export class PerformancesService {
     id: string,
     viewer: AuthUser | undefined,
   ): Promise<PerformanceResponseDto> {
-    const performance = await this.prisma.performance.findUnique({
-      where: { id },
-      include: detailInclude,
-    });
+    // Cached raw record; the draft check below runs on every read.
+    const performance = await this.cache.getOrLoad(
+      () => CatalogCacheService.performanceKey(id),
+      () =>
+        this.prisma.performance.findUnique({
+          where: { id },
+          include: detailInclude,
+        }),
+    );
     if (
       !performance ||
       (performance.status === 'DRAFT' && !isOwner(performance.concert, viewer))
@@ -210,6 +218,10 @@ export class PerformancesService {
         maxTicketsPerUser: dto.maxTicketsPerUser,
       },
     });
+    await this.cache.invalidate({
+      performanceId: id,
+      concertId: performance.concertId,
+    });
     return this.getVisible(id, organizer);
   }
 
@@ -247,7 +259,7 @@ export class PerformancesService {
     id: string,
     organizer: AuthUser,
   ): Promise<PerformanceResponseDto> {
-    await this.assertOwner(id, organizer);
+    const { concertId } = await this.assertOwner(id, organizer);
     const changed = await this.prisma.$executeRaw`
       UPDATE performances SET status = 'CANCELLED', updated_at = now()
       WHERE id = ${id}::uuid AND status IN ('DRAFT', 'PUBLISHED')
@@ -255,6 +267,7 @@ export class PerformancesService {
     if (changed === 0) {
       throw invalidState('This performance is already cancelled');
     }
+    await this.cache.invalidate({ performanceId: id, concertId });
     await this.payments.add(
       PaymentJob.CANCEL_PERFORMANCE,
       { performanceId: id } satisfies CancelPerformanceData,
@@ -267,7 +280,7 @@ export class PerformancesService {
     id: string,
     organizer: AuthUser,
   ): Promise<PerformanceResponseDto> {
-    await this.assertOwner(id, organizer);
+    const { concertId } = await this.assertOwner(id, organizer);
     // State transition as a conditional UPDATE: only a DRAFT can be
     // published, and of two concurrent publishes exactly one matches.
     const changed = await this.prisma.$executeRaw`
@@ -278,6 +291,7 @@ export class PerformancesService {
     if (changed === 0) {
       throw invalidState('Only a DRAFT performance can be published');
     }
+    await this.cache.invalidate({ performanceId: id, concertId });
     return this.getVisible(id, organizer);
   }
 

@@ -8,6 +8,7 @@ import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
 import { type Concert, Role } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { CatalogCacheService } from './catalog-cache.service.js';
 import type {
   ConcertResponseDto,
   CreateConcertDto,
@@ -20,13 +21,16 @@ const performanceSummary = {
 
 @Injectable()
 export class ConcertsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CatalogCacheService,
+  ) {}
 
   async create(
     organizer: AuthUser,
     dto: CreateConcertDto,
   ): Promise<ConcertResponseDto> {
-    return this.prisma.concert.create({
+    const concert = await this.prisma.concert.create({
       data: {
         organizerId: organizer.id,
         name: dto.name,
@@ -35,10 +39,22 @@ export class ConcertsService {
       },
       include: { performances: performanceSummary },
     });
+    await this.cache.invalidate({ concertId: concert.id });
+    return concert;
   }
 
   /** Public catalog: concerts with at least one published performance. */
   async listPublished(
+    query: PaginationQueryDto,
+  ): Promise<Paginated<ConcertResponseDto>> {
+    const page = await this.cache.getOrLoad(
+      () => this.cache.listKey(query.page, query.pageSize),
+      () => this.loadPublished(query),
+    );
+    return page!;
+  }
+
+  private async loadPublished(
     query: PaginationQueryDto,
   ): Promise<Paginated<ConcertResponseDto>> {
     const where = { performances: { some: { status: 'PUBLISHED' as const } } };
@@ -68,10 +84,15 @@ export class ConcertsService {
     id: string,
     viewer: AuthUser | undefined,
   ): Promise<ConcertResponseDto> {
-    const concert = await this.prisma.concert.findUnique({
-      where: { id },
-      include: { performances: performanceSummary },
-    });
+    // Cached raw record (drafts included); visibility is decided below.
+    const concert = await this.cache.getOrLoad(
+      () => CatalogCacheService.concertKey(id),
+      () =>
+        this.prisma.concert.findUnique({
+          where: { id },
+          include: { performances: performanceSummary },
+        }),
+    );
     if (!concert) {
       throw concertNotFound();
     }

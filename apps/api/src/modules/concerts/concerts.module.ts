@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SeatsModule } from '../seats/seats.module.js';
+import { CatalogCacheService } from './catalog-cache.service.js';
 import { ConcertsController } from './concerts.controller.js';
 import { ConcertsService } from './concerts.service.js';
 import { PerformancesController } from './performances.controller.js';
@@ -11,7 +12,12 @@ import { ZonesService } from './zones.service.js';
 @Module({
   imports: [SeatsModule],
   controllers: [ConcertsController, PerformancesController],
-  providers: [ConcertsService, PerformancesService, ZonesService],
+  providers: [
+    ConcertsService,
+    PerformancesService,
+    ZonesService,
+    CatalogCacheService,
+  ],
   exports: [PerformancesService, ZonesService],
 })
 export class ConcertsModule {}
