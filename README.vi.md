@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 6: trang web Next.js để mua vé (sơ đồ ghế trên canvas, giữ vé có đếm ngược, thanh toán, vé QR), được test bằng Playwright trên trình duyệt thật với toàn bộ stack Docker ở mỗi lần push. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền. Bản demo online có ở giai đoạn 9.
+> **Trạng thái:** Xong giai đoạn 7a: 2 instance API sau Nginx, sơ đồ ghế realtime qua WebSocket (bản chụp kèm `seq`, đã chứng minh hội tụ trên nhiều instance), cache Redis cho API đọc danh mục, và rate limit với bộ đếm dùng chung giữa các instance. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền, trang web Next.js test bằng Playwright. Bản demo online có ở giai đoạn 9.
 
 ![Mua vé: đăng ký, chọn ghế và vé đứng, giữ vé, thanh toán ở cổng giả lập, nhận vé QR](docs/assets/buying-flow.gif)
 
@@ -30,9 +30,9 @@ docker compose up -d --build
 curl localhost:3000/api/v1/health/ready
 ```
 
-`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động API, tiến trình worker chạy nền và trang web.
+`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động 2 instance API, tiến trình worker chạy nền và trang web, tất cả sau Nginx, cửa vào duy nhất (`/` sang trang web, `/api` và `/socket.io` sang các instance API).
 
-- Trang web: <http://localhost:3200>. Chọn đêm diễn, chọn ghế trên sơ đồ, giữ vé, thanh toán ở cổng giả lập, nhận vé QR. Web chuyển `/api/*` sang API, nên trình duyệt chỉ làm việc với một origin.
+- Trang web: <http://localhost:3200>. Chọn đêm diễn, chọn ghế trên sơ đồ, giữ vé, thanh toán ở cổng giả lập, nhận vé QR. Ghế người khác vừa giữ hoặc mua đổi màu ngay. Mỗi response ghi instance đã xử lý trong header `X-Instance`.
 
 Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_PROVIDER=fake`), nên không cần tài khoản nào. Muốn trả tiền trên VNPay sandbox thật, xem [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md).
 
@@ -80,6 +80,10 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | **5: thanh toán** | IPN hỗn loạn: mỗi IPN gửi 5 lần song song, sai số tiền, chữ ký giả, tiền về sau khi đơn đã hủy, hủy đơn đua với IPN | **0 vi phạm** I2/I4/I8/I9/I12; 500 thanh toán được xác nhận đúng một lần, 250 đơn được hoàn tiền |
 | 5 | 5.000 khách: giữ vé → thanh toán → nhận vé | cả 500 vé đã giữ đều được thanh toán và phát vé, 0 vi phạm; khoảng 6% lượt giữ vé nhận 503 khi quá tải |
 | 5 | 5.000 lượt quét đồng thời trên 100 vé | đúng **100 lượt được nhận**; 267 → **365 req/s** sau khi gộp lượt quét thành công vào một câu lệnh |
+| **7a: 1 → 2 instance API sau Nginx** | 5.000 khách, 100 ghế | 525 → **790 req/s**, p95 7,3 s → 4,8 s; vẫn 0 ghế bán trùng |
+| 7a | 5.000 khách, 500 vé đứng | 436 → **614 req/s**; đúng 500 vé |
+| 7a | giết một instance (`docker kill`) ở giây thứ 5 | **0 vi phạm bất biến** ở cả hai kịch bản; chỉ các request đang dở trên instance chết bị lỗi |
+| 7a: cache danh mục tắt → bật | đọc danh mục 400 req/s | chỉ theo được 362 req/s, p95 4,9 s → **400 req/s, p95 7 ms** |
 
 > Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 

@@ -308,6 +308,7 @@ Khi đêm diễn bật hàng chờ, người dùng vào một sorted set trong R
 - `GET /performances/:id/seats` trả bản chụp trạng thái kèm số thứ tự `seq`.
 - Thay đổi được gom lại và gửi theo lô mỗi 200–500 ms cho mỗi đêm diễn, kèm `seq`.
 - Client chỉ áp dụng các lô có `seq` lớn hơn bản chụp. Nếu thấy hụt `seq` thì tải lại bản chụp.
+- Nơi đổi trạng thái ghế chỉ đánh dấu ghế đó vào Redis sau khi commit. Một tiến trình duy nhất trong worker lấy các đánh dấu kèm `seq` mới, đọc trạng thái hiện tại từ PostgreSQL rồi phát; bản chụp đọc `seq` trước khi đọc ghế. Lý do và chứng minh: [ADR-0015](adr/0015-scale-out-realtime-cache-rate-limit.md).
 
 ### Bất biến
 
@@ -373,8 +374,7 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | Namespace | Sự kiện | Hướng | Nội dung |
 | --- | --- | --- | --- |
 | `/seats` | `join` | Client gửi | `performanceId` muốn theo dõi |
-| `/seats` | `seats.batch` | Server gửi | `seq` và danh sách (`seatId`, trạng thái mới) |
-| `/seats` | `zone.updated` | Server gửi | Số vé còn lại của khu đứng |
+| `/seats` | `seats.batch` | Server gửi | `seq`, danh sách (`seatId`, trạng thái hiện tại) và số vé còn lại của các khu vừa đổi (gộp cả `zone.updated`, để ghế và khu dùng chung một `seq`) |
 | `/queue` | `queue.position` | Server gửi | Vị trí hiện tại trong hàng chờ |
 | `/queue` | `queue.admitted` | Server gửi | Vé vào cửa và thời hạn |
 | `/sales` | `sales.updated` | Server gửi, chỉ cho `ORGANIZER` | Số vé đã bán theo khu, doanh thu, số vé đang giữ, độ dài hàng chờ |
@@ -382,6 +382,15 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 ### Giới hạn tốc độ
 
 Áp dụng theo người dùng và theo IP, lưu bộ đếm trong Redis để đúng trên nhiều instance. Giới hạn chặt hơn cho `/reservations` và `/auth/login`.
+
+| Giới hạn | Mặc định |
+| --- | --- |
+| Mọi request, theo IP | 300 / phút (`RATE_LIMIT_IP_PER_MINUTE`) |
+| Request đã đăng nhập, theo tài khoản | 120 / phút (`RATE_LIMIT_USER_PER_MINUTE`) |
+| `POST /auth/login`, theo IP | 10 / phút |
+| `POST /reservations`, theo tài khoản | 20 / phút |
+
+Bộ đếm tính theo từng route. Vượt giới hạn trả `429` kèm `Retry-After`. Load test tắt rate limit, vì mọi người dùng ảo của k6 đi từ một IP.
 
 ## 8. BullMQ, Kafka và outbox
 
@@ -600,6 +609,8 @@ Hoàn thành khi: mua được vé trên trình duyệt với stack dựng bằn
 - WebSocket Gateway với Redis adapter; sơ đồ ghế realtime theo cơ chế bản chụp kèm `seq`.
 - Cache cho API đọc concert và đêm diễn, có xóa cache khi sửa.
 - Rate limiting lưu trong Redis.
+
+Thiết kế: [ADR-0015](adr/0015-scale-out-realtime-cache-rate-limit.md).
 
 Hoàn thành khi: hai trình duyệt nối vào hai instance khác nhau cùng thấy ghế đổi trạng thái (test bằng Playwright); tắt một instance giữa lúc load test không gây vi phạm bất biến.
 
