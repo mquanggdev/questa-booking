@@ -48,7 +48,7 @@ test('a new customer buys two seats and a standing ticket and gets QR tickets', 
   await expect(page.getByText('Đứng · vé đứng')).toBeVisible();
 });
 
-test('two customers pick the same seat: only one can hold it', async ({
+test('two customers pick the same seat: the second sees it taken live and cannot hold it', async ({
   browser,
 }) => {
   const first = await browser.newPage();
@@ -64,10 +64,12 @@ test('two customers pick the same seat: only one can hold it', async ({
   await first.getByRole('button', { name: 'Giữ 1 vé' }).click();
   await expect(first).toHaveURL(/\/orders\//);
 
-  // The second customer still sees B1 selected (the map refreshes every few
-  // seconds) and tries anyway: the server refuses, the page explains.
-  await second.getByRole('button', { name: 'Giữ 1 vé' }).click();
-  await expect(second.getByText(/vừa có người khác giữ/)).toBeVisible();
+  // Phase 7a: the realtime seat map tells the second customer right away,
+  // and the seat leaves their selection. (The server-side refusal of a seat
+  // already held is covered by the API e2e tests.)
+  await expect(second.getByText(/B1 vừa có người khác giữ/)).toBeVisible({
+    timeout: 3_000,
+  });
   await expect(second.getByRole('button', { name: 'Giữ 0 vé' })).toBeDisabled();
   await expect(second).toHaveURL(new RegExp(`/performances/${performance.id}`));
 });

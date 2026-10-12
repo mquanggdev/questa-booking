@@ -72,6 +72,9 @@ jobs:
         run: |
           cp .env.example .env
           sed -i "s/^JWT_ACCESS_SECRET=.*/JWT_ACCESS_SECRET=ci-$(openssl rand -hex 24)/" .env
+          # Browser tests sign in from one IP in bursts (and Playwright
+          # retries): rate limiting is proven by the API e2e tests instead.
+          sed -i "s/^RATE_LIMIT_ENABLED=.*/RATE_LIMIT_ENABLED=false/" .env
       # `migrate` is a one-off container that exits, so wait for the web
       # container's health check instead of `up --wait`.
       - name: Start the stack

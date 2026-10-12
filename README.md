@@ -58,7 +58,7 @@ pnpm --filter @questa/web dev        # http://localhost:3200
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Static checks |
 | `pnpm test` | Unit tests |
 | `pnpm test:e2e` | End-to-end tests on a separate `questa_test` database (needs PostgreSQL and Redis) |
-| `pnpm test:browser` | Playwright tests of the buying flow in a real browser (needs the stack running and seeded) |
+| `pnpm test:browser` | Playwright tests of the buying flow in a real browser (needs the stack running and seeded, with `RATE_LIMIT_ENABLED=false`) |
 
 ## Benchmarks
 

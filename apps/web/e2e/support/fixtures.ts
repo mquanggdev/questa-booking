@@ -22,6 +22,10 @@ export async function createPerformance(
       password: process.env.SEED_PASSWORD ?? 'Questa@2026',
     },
   });
+  expect(
+    login.status(),
+    'login rate-limited: start the API with RATE_LIMIT_ENABLED=false for browser tests',
+  ).not.toBe(429);
   expect(login.ok(), 'seeded organizer can log in (run db:seed)').toBeTruthy();
   const headers = {
     Authorization: `Bearer ${(await login.json()).accessToken as string}`,

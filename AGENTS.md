@@ -101,7 +101,7 @@ Chạy từ thư mục gốc repo:
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
 | `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md`; `--kill-after N` giết một instance API sau N giây. Cần `RATE_LIMIT_ENABLED=false docker compose up -d api` trước khi đo |
-| `pnpm test:browser` | Test Playwright luồng mua vé trên bản build production (cần stack đang chạy và đã seed) |
+| `pnpm test:browser` | Test Playwright luồng mua vé (cần stack đang chạy, đã seed, và `RATE_LIMIT_ENABLED=false docker compose up -d api`) |
 | `pnpm --filter @questa/api openapi:export` rồi `pnpm --filter @questa/web api:types` | Sinh lại `openapi.json` và kiểu dữ liệu của web sau khi đổi API |
 | `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
 | `pnpm showcase:video <slides.html>` | Dựng video tiếng Việt từ slide (qua `uv`, không cài gì lên hệ thống) |

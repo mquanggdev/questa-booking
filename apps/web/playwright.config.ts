@@ -6,6 +6,9 @@ import { defineConfig, devices } from '@playwright/test';
 // PostgreSQL and Redis must be running (docker compose up -d) and seeded
 // (pnpm --filter @questa/api db:seed), because tests sign in as the seeded
 // organizer to create their own performance.
+// Rate limiting must be off (RATE_LIMIT_ENABLED=false docker compose up -d
+// api): every test signs in from the same IP, and a rerun within a minute
+// would exceed the login limit. Rate limiting has its own API e2e tests.
 // Only the seed password is taken from the repo's .env: loading the whole
 // file would also pass the API's NODE_ENV=development to `next build`, which
 // then fails to prerender.

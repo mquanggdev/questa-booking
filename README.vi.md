@@ -60,7 +60,7 @@ pnpm --filter @questa/web dev        # http://localhost:3200
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Kiểm tra tĩnh |
 | `pnpm test` | Unit test |
 | `pnpm test:e2e` | E2E test trên database riêng `questa_test` (cần PostgreSQL và Redis) |
-| `pnpm test:browser` | Test Playwright luồng mua vé trên trình duyệt thật (cần stack đang chạy và đã seed) |
+| `pnpm test:browser` | Test Playwright luồng mua vé trên trình duyệt thật (cần stack đang chạy, đã seed, và `RATE_LIMIT_ENABLED=false`) |
 
 ## Benchmark
 
