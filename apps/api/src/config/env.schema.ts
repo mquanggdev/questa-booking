@@ -58,6 +58,20 @@ export const envSchema = z
       .max(5000)
       .default(250),
     RECONCILE_EVERY_MS: z.coerce.number().int().positive().default(30_000),
+    // Virtual waiting room (phase 7b): every tick the worker admits up to
+    // ADMIT_PER_TICK people per performance; an admission pass lasts
+    // PASS_TTL_SECONDS. Default: 100 people per second.
+    WAITING_ROOM_TICK_MS: z.coerce.number().int().min(100).default(1000),
+    WAITING_ROOM_ADMIT_PER_TICK: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(100),
+    WAITING_ROOM_PASS_TTL_SECONDS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(600),
     // Payments (phase 5). "fake" speaks the VNPay protocol against a local
     // simulated gateway; it is refused in production.
     PAYMENT_PROVIDER: z.enum(['fake', 'vnpay']).default('fake'),

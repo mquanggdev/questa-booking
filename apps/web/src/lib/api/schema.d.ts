@@ -246,6 +246,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/performances/{id}/presale/codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Every code of this performance and whether it was used */
+        get: operations["PresaleController_list"];
+        put?: never;
+        /** Generate single-use codes for a PRESALE phase (shown in full only here and in the list) */
+        post: operations["PresaleController_generate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/performances/{id}/presale/redeem": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeem a presale code: during its phase this account may hold tickets.
+         *     One code per account per phase; redeeming your own code again is a no-op.
+         */
+        post: operations["PresaleController_redeem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/performances/{id}/presale/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Presale phases of this performance this account redeemed a code for */
+        get: operations["PresaleController_mine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders": {
         parameters: {
             query?: never;
@@ -311,6 +366,43 @@ export interface paths {
         put?: never;
         /** Cancels my PENDING order and releases its tickets immediately */
         post: operations["OrderCancellationController_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/performances/{id}/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join the virtual waiting room. Joining again keeps your place; once
+         *     admitted it returns your pass. Live updates: WebSocket namespace /queue.
+         */
+        post: operations["WaitingRoomController_join"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/performances/{id}/queue/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your place in line, or your admission pass once it is your turn */
+        get: operations["WaitingRoomController_me"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -544,6 +636,11 @@ export interface components {
             startsAt: string;
             /** @default 6 */
             maxTicketsPerUser: number;
+            /**
+             * @description Buyers must queue in the virtual waiting room and be admitted before holding tickets
+             * @default false
+             */
+            waitingRoomEnabled: boolean;
             zones: components["schemas"]["CreateZoneDto"][];
             salePhases: components["schemas"]["CreateSalePhaseDto"][];
         };
@@ -583,6 +680,8 @@ export interface components {
             /** @enum {string} */
             status: "DRAFT" | "PUBLISHED" | "CANCELLED";
             maxTicketsPerUser: number;
+            /** @description Buyers queue before they can hold tickets */
+            waitingRoomEnabled: boolean;
             zones: components["schemas"]["ZoneResponseDto"][];
             salePhases: components["schemas"]["SalePhaseResponseDto"][];
         };
@@ -593,6 +692,11 @@ export interface components {
             startsAt?: string;
             /** @default 6 */
             maxTicketsPerUser: number;
+            /**
+             * @description Buyers must queue in the virtual waiting room and be admitted before holding tickets
+             * @default false
+             */
+            waitingRoomEnabled: boolean;
         };
         ZoneAvailabilityDto: {
             /** Format: uuid */
@@ -625,6 +729,46 @@ export interface components {
             seq: number;
             zones: components["schemas"]["ZoneAvailabilityDto"][];
             seats: components["schemas"]["SeatResponseDto"][];
+        };
+        GeneratePresaleCodesDto: {
+            /**
+             * Format: uuid
+             * @description A PRESALE phase of this performance
+             */
+            salePhaseId: string;
+            /** @example 100 */
+            count: number;
+        };
+        PresaleCodesResponseDto: {
+            /** Format: uuid */
+            salePhaseId: string;
+            /**
+             * @example [
+             *       "K7QM-2XRP-9D"
+             *     ]
+             */
+            codes: string[];
+        };
+        PresaleCodeDto: {
+            /** @example K7QM-2XRP-9D */
+            code: string;
+            /** Format: uuid */
+            salePhaseId: string;
+            /** Format: date-time */
+            redeemedAt?: string | null;
+        };
+        RedeemPresaleCodeDto: {
+            /**
+             * @description Case, spaces and dashes are ignored
+             * @example K7QM-2XRP-9D
+             */
+            code: string;
+        };
+        PresaleRedemptionDto: {
+            /** Format: uuid */
+            salePhaseId: string;
+            /** Format: date-time */
+            redeemedAt: string;
         };
         OrderItemResponseDto: {
             /** Format: uuid */
@@ -666,6 +810,23 @@ export interface components {
             seatIds?: string[];
             /** @description Standing tickets per zone */
             standing?: components["schemas"]["StandingSelectionDto"][];
+        };
+        QueueStatusDto: {
+            /** @enum {string} */
+            status: "NOT_REQUIRED" | "NONE" | "WAITING" | "ADMITTED";
+            /** @description WAITING: your number in line (arrival order) */
+            number?: number;
+            /** @description WAITING: 1 = admitted next. Equals number - admittedThrough */
+            position?: number;
+            /** @description Number of the last person admitted (0 = nobody yet) */
+            admittedThrough?: number;
+            /** @description People still waiting */
+            waiting?: number;
+            /**
+             * Format: date-time
+             * @description ADMITTED: when the admission pass stops being accepted
+             */
+            expiresAt?: string;
         };
         PayOrderDto: {
             /**
@@ -1116,6 +1277,98 @@ export interface operations {
             };
         };
     };
+    PresaleController_list: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresaleCodeDto"][];
+                };
+            };
+        };
+    };
+    PresaleController_generate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GeneratePresaleCodesDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresaleCodesResponseDto"];
+                };
+            };
+        };
+    };
+    PresaleController_redeem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RedeemPresaleCodeDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresaleRedemptionDto"];
+                };
+            };
+        };
+    };
+    PresaleController_mine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresaleRedemptionDto"][];
+                };
+            };
+        };
+    };
     OrdersController_list: {
         parameters: {
             query?: never;
@@ -1198,6 +1451,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    WaitingRoomController_join: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueStatusDto"];
+                };
+            };
+        };
+    };
+    WaitingRoomController_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueueStatusDto"];
+                };
             };
         };
     };

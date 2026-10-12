@@ -3,6 +3,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsBoolean,
   IsDate,
   IsEnum,
   IsInt,
@@ -101,6 +102,16 @@ export class CreatePerformanceDto {
   @Max(20)
   maxTicketsPerUser?: number;
 
+  @ApiProperty({
+    required: false,
+    default: false,
+    description:
+      'Buyers must queue in the virtual waiting room and be admitted before holding tickets',
+  })
+  @IsOptional()
+  @IsBoolean()
+  waitingRoomEnabled?: boolean;
+
   @ApiProperty({ type: [CreateZoneDto] })
   @ValidateNested({ each: true })
   @Type(() => CreateZoneDto)
@@ -117,7 +128,12 @@ export class CreatePerformanceDto {
 }
 
 export class UpdatePerformanceDto extends PartialType(
-  PickType(CreatePerformanceDto, ['venue', 'startsAt', 'maxTicketsPerUser']),
+  PickType(CreatePerformanceDto, [
+    'venue',
+    'startsAt',
+    'maxTicketsPerUser',
+    'waitingRoomEnabled',
+  ]),
 ) {}
 
 export class ZoneResponseDto {
@@ -180,6 +196,9 @@ export class PerformanceResponseDto {
 
   @ApiProperty()
   maxTicketsPerUser: number;
+
+  @ApiProperty({ description: 'Buyers queue before they can hold tickets' })
+  waitingRoomEnabled: boolean;
 
   @ApiProperty({ type: [ZoneResponseDto] })
   zones: ZoneResponseDto[];

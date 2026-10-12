@@ -5,6 +5,7 @@ import {
   PAYMENTS_DEAD_LETTER_QUEUE,
   PAYMENTS_QUEUE,
   RESERVATIONS_QUEUE,
+  WAITING_ROOM_QUEUE,
 } from './queue.constants.js';
 
 /** ioredis connection options from a redis:// URL (host, port, password, db). */
@@ -43,6 +44,7 @@ export function redisConnection(url: string) {
       { name: RESERVATIONS_QUEUE },
       { name: PAYMENTS_QUEUE },
       { name: PAYMENTS_DEAD_LETTER_QUEUE },
+      { name: WAITING_ROOM_QUEUE },
     ),
   ],
   exports: [BullModule],

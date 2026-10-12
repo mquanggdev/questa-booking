@@ -501,6 +501,174 @@
         ]
       }
     },
+    "/api/v1/performances/{id}/presale/codes": {
+      "post": {
+        "operationId": "PresaleController_generate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePresaleCodesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresaleCodesResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Generate single-use codes for a PRESALE phase (shown in full only here and in the list)",
+        "tags": [
+          "presale"
+        ]
+      },
+      "get": {
+        "operationId": "PresaleController_list",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PresaleCodeDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Every code of this performance and whether it was used",
+        "tags": [
+          "presale"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/presale/redeem": {
+      "post": {
+        "operationId": "PresaleController_redeem",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedeemPresaleCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PresaleRedemptionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Redeem a presale code: during its phase this account may hold tickets.\nOne code per account per phase; redeeming your own code again is a no-op.",
+        "tags": [
+          "presale"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/presale/me": {
+      "get": {
+        "operationId": "PresaleController_mine",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PresaleRedemptionDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Presale phases of this performance this account redeemed a code for",
+        "tags": [
+          "presale"
+        ]
+      }
+    },
     "/api/v1/orders": {
       "get": {
         "operationId": "OrdersController_list",
@@ -639,6 +807,78 @@
         "summary": "Cancels my PENDING order and releases its tickets immediately",
         "tags": [
           "orders"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/queue": {
+      "post": {
+        "operationId": "WaitingRoomController_join",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Join the virtual waiting room. Joining again keeps your place; once\nadmitted it returns your pass. Live updates: WebSocket namespace /queue.",
+        "tags": [
+          "waiting-room"
+        ]
+      }
+    },
+    "/api/v1/performances/{id}/queue/me": {
+      "get": {
+        "operationId": "WaitingRoomController_me",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueueStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Your place in line, or your admission pass once it is your turn",
+        "tags": [
+          "waiting-room"
         ]
       }
     },
@@ -1205,6 +1445,11 @@
             "maximum": 20,
             "default": 6
           },
+          "waitingRoomEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Buyers must queue in the virtual waiting room and be admitted before holding tickets"
+          },
           "zones": {
             "minItems": 1,
             "maxItems": 20,
@@ -1340,6 +1585,10 @@
           "maxTicketsPerUser": {
             "type": "number"
           },
+          "waitingRoomEnabled": {
+            "type": "boolean",
+            "description": "Buyers queue before they can hold tickets"
+          },
           "zones": {
             "type": "array",
             "items": {
@@ -1360,6 +1609,7 @@
           "startsAt",
           "status",
           "maxTicketsPerUser",
+          "waitingRoomEnabled",
           "zones",
           "salePhases"
         ]
@@ -1382,6 +1632,11 @@
             "minimum": 1,
             "maximum": 20,
             "default": 6
+          },
+          "waitingRoomEnabled": {
+            "type": "boolean",
+            "default": false,
+            "description": "Buyers must queue in the virtual waiting room and be admitted before holding tickets"
           }
         }
       },
@@ -1488,6 +1743,102 @@
           "seq",
           "zones",
           "seats"
+        ]
+      },
+      "GeneratePresaleCodesDto": {
+        "type": "object",
+        "properties": {
+          "salePhaseId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A PRESALE phase of this performance"
+          },
+          "count": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 1000,
+            "example": 100
+          }
+        },
+        "required": [
+          "salePhaseId",
+          "count"
+        ]
+      },
+      "PresaleCodesResponseDto": {
+        "type": "object",
+        "properties": {
+          "salePhaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "codes": {
+            "example": [
+              "K7QM-2XRP-9D"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "salePhaseId",
+          "codes"
+        ]
+      },
+      "PresaleCodeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "example": "K7QM-2XRP-9D"
+          },
+          "salePhaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "redeemedAt": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "code",
+          "salePhaseId"
+        ]
+      },
+      "RedeemPresaleCodeDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 10,
+            "example": "K7QM-2XRP-9D",
+            "description": "Case, spaces and dashes are ignored"
+          }
+        },
+        "required": [
+          "code"
+        ]
+      },
+      "PresaleRedemptionDto": {
+        "type": "object",
+        "properties": {
+          "salePhaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "redeemedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "salePhaseId",
+          "redeemedAt"
         ]
       },
       "OrderItemResponseDto": {
@@ -1616,6 +1967,44 @@
         },
         "required": [
           "performanceId"
+        ]
+      },
+      "QueueStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "enum": [
+              "NOT_REQUIRED",
+              "NONE",
+              "WAITING",
+              "ADMITTED"
+            ],
+            "type": "string"
+          },
+          "number": {
+            "type": "number",
+            "description": "WAITING: your number in line (arrival order)"
+          },
+          "position": {
+            "type": "number",
+            "description": "WAITING: 1 = admitted next. Equals number - admittedThrough"
+          },
+          "admittedThrough": {
+            "type": "number",
+            "description": "Number of the last person admitted (0 = nobody yet)"
+          },
+          "waiting": {
+            "type": "number",
+            "description": "People still waiting"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "ADMITTED: when the admission pass stops being accepted"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "PayOrderDto": {

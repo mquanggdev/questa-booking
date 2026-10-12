@@ -18,6 +18,7 @@ import {
 } from '../../queue/queue.constants.js';
 import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService, type SeatHoldStrategy } from '../seats/seats.service.js';
+import { WaitingRoomService } from '../waiting-room/waiting-room.service.js';
 import { HoldGateService } from './gate/hold-gate.service.js';
 import type { CreateReservationDto } from './dto/create-reservation.dto.js';
 import {
@@ -47,9 +48,13 @@ export interface ReservationResult {
 /**
  * Flow A (hold tickets).
  *
- * Before the database: an Idempotency-Key that already made an order is
- * answered straight away, then the Redis gate (phase 4) rejects requests
- * that are certain to fail without using a database connection.
+ * Before the Redis gate (phase 7b): who may hold at all. The waiting room
+ * pass (one Redis read) and, during a presale only, the presale code (one
+ * indexed read). Refused requests must never reach the gate: there they
+ * would take seats in Redis for a moment and turn away a buyer who is
+ * allowed. Then the Redis gate (phase 4) rejects requests that are certain
+ * to fail without using a database connection. The database checks the
+ * sale window and the presale code again, authoritatively (getOnSale).
  *
  * Every guarantee is enforced by PostgreSQL, inside one transaction, in this
  * order:
@@ -76,6 +81,7 @@ export class ReservationsService {
     private readonly orders: OrdersService,
     private readonly gate: HoldGateService,
     private readonly seatEvents: SeatEventsService,
+    private readonly waitingRoom: WaitingRoomService,
     private readonly config: AppConfigService,
     @InjectQueue(RESERVATIONS_QUEUE) private readonly queue: Queue,
   ) {}
@@ -89,6 +95,17 @@ export class ReservationsService {
     const count = ticketCount(selection);
     if (count === 0) {
       throw invalidSelection('Select at least one seat or standing ticket');
+    }
+
+    const refusal = await this.admissionRefusal(dto.performanceId, userId);
+    if (refusal) {
+      const earlier = await this.replayIfMade(
+        userId,
+        idempotencyKey,
+        selection,
+      );
+      if (earlier) return earlier;
+      throw refusal;
     }
 
     // The gate runs before any database query: under contention most
@@ -135,9 +152,27 @@ export class ReservationsService {
     selection: NormalizedSelection,
     count: number,
   ): Promise<ReservationResult> {
-    const performance = await this.performances.getOnSale(
-      selection.performanceId,
-    );
+    let performance;
+    try {
+      performance = await this.performances.getOnSale(
+        selection.performanceId,
+        userId,
+      );
+    } catch (error) {
+      if (
+        error instanceof AppException &&
+        (error.code === ErrorCode.SALE_NOT_OPEN ||
+          error.code === ErrorCode.PRESALE_CODE_REQUIRED)
+      ) {
+        const earlier = await this.replayIfMade(
+          userId,
+          idempotencyKey,
+          selection,
+        );
+        if (earlier) return earlier;
+      }
+      throw error;
+    }
     const max = performance.maxTicketsPerUser;
     if (count > max) {
       throw new AppException(
@@ -167,6 +202,55 @@ export class ReservationsService {
       strategy: this.config.get('SEAT_HOLD_STRATEGY'),
       zones,
     });
+  }
+
+  /**
+   * Why this account may not hold tickets for this performance right now,
+   * or null. Cheapest check first: with a waiting room, one Redis read
+   * shields everything behind it from people not yet admitted.
+   */
+  private async admissionRefusal(
+    performanceId: string,
+    userId: string,
+  ): Promise<AppException | null> {
+    if (!(await this.waitingRoom.isAdmitted(performanceId, userId))) {
+      return new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.QUEUE_PASS_REQUIRED,
+        'Join the waiting room and wait for your turn before holding tickets',
+      );
+    }
+    if (!(await this.performances.presaleAllows(performanceId, userId))) {
+      return new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.PRESALE_CODE_REQUIRED,
+        'This presale is only for accounts that redeemed a presale code',
+      );
+    }
+    return null;
+  }
+
+  /**
+   * An earlier request with this key already made an order: answer with it
+   * (I5), even when a check that runs first (waiting room pass, sale window,
+   * presale code) would refuse now. A retry after a lost response must get
+   * its order back, not an error. Only called on those refusal paths, so a
+   * normal hold does not pay for this query.
+   */
+  private async replayIfMade(
+    userId: string,
+    idempotencyKey: string,
+    selection: NormalizedSelection,
+  ): Promise<ReservationResult | null> {
+    const existing = await this.orders.findByIdempotencyKey(
+      this.prisma,
+      userId,
+      idempotencyKey,
+    );
+    if (!existing) return null;
+    if (existing.requestHash !== requestHash(selection)) throw keyReused();
+    const { requestHash: _hash, ...order } = existing;
+    return { order, replayed: true };
   }
 
   /**

@@ -18,6 +18,13 @@ export interface ExpireOrderData {
 /** BullMQ job ids must not contain ":". UUIDs only use "-". */
 export const expireJobId = (orderId: string) => `expire-${orderId}`;
 
+export const WAITING_ROOM_QUEUE = 'waiting-room';
+
+export const WaitingRoomJob = {
+  /** Repeating: admit the next people of every non-empty waiting room. */
+  ADMIT_BATCH: 'admit-batch',
+} as const;
+
 export const PAYMENTS_QUEUE = 'payments';
 /** Refunds that failed every attempt; kept for a human to look at. */
 export const PAYMENTS_DEAD_LETTER_QUEUE = 'payments-dead-letter';

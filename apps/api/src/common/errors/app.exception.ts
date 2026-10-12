@@ -13,4 +13,8 @@ export class AppException extends HttpException {
     const body: ErrorBody = { code, message, details };
     super(body, status);
   }
+
+  get code(): ErrorCode {
+    return (this.getResponse() as ErrorBody).code;
+  }
 }

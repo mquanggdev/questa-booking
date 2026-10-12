@@ -9,6 +9,8 @@ import { ReservationsModule } from './modules/reservations/reservations.module.j
 import { SeatBroadcastService } from './modules/seats/seat-broadcast.service.js';
 import { SeatsModule } from './modules/seats/seats.module.js';
 import { ReservationsProcessor } from './modules/reservations/reservations.processor.js';
+import { WaitingRoomModule } from './modules/waiting-room/waiting-room.module.js';
+import { WaitingRoomProcessor } from './modules/waiting-room/waiting-room.processor.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { QueueModule } from './queue/queue.module.js';
 import { RedisModule } from './redis/redis.module.js';
@@ -36,7 +38,13 @@ import { RedisModule } from './redis/redis.module.js';
     PaymentsModule,
     ConcertsModule,
     SeatsModule,
+    WaitingRoomModule,
   ],
-  providers: [ReservationsProcessor, PaymentsProcessor, SeatBroadcastService],
+  providers: [
+    ReservationsProcessor,
+    PaymentsProcessor,
+    SeatBroadcastService,
+    WaitingRoomProcessor,
+  ],
 })
 export class WorkerModule {}

@@ -7,6 +7,7 @@ import { ErrorCode } from '../../common/errors/error-codes.js';
 import {
   ZoneType,
   type PerformanceStatus,
+  type SalePhaseType,
   type Prisma,
 } from '../../generated/prisma/client.js';
 import {
@@ -27,6 +28,17 @@ import type {
   UpdatePerformanceDto,
 } from './dto/performance.dto.js';
 import { validatePerformanceRules } from './performance-rules.js';
+import { PresaleService } from './presale.service.js';
+
+/** What the waiting room needs, read from the catalog cache. */
+export interface AdmissionInfo {
+  status: PerformanceStatus;
+  waitingRoomEnabled: boolean;
+  /** The sale phase open right now, if any. */
+  openPhase: { id: string; type: SalePhaseType } | null;
+  /** Does any sale phase end in the future? */
+  saleAhead: boolean;
+}
 
 export interface OnSalePerformance {
   id: string;
@@ -56,16 +68,21 @@ export class PerformancesService {
     private readonly seats: SeatsService,
     private readonly seatEvents: SeatEventsService,
     private readonly cache: CatalogCacheService,
+    private readonly presale: PresaleService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly payments: Queue,
   ) {}
 
   /**
    * What a reservation needs to know: zones with prices, and the ticket
-   * limit. Throws unless the performance is published and a GENERAL sale
-   * phase is open right now (presale codes arrive in phase 7b).
+   * limit. Read from PostgreSQL, not the cache: this is the authoritative
+   * check. Throws unless the performance is published and a sale phase is
+   * open right now; during a PRESALE phase the account must have redeemed
+   * a code of that phase (I11; redeeming is permanent, so checking before
+   * the hold transaction is enough).
    */
   async getOnSale(
     id: string,
+    userId: string,
     now: Date = new Date(),
   ): Promise<OnSalePerformance> {
     const performance = await this.prisma.performance.findUnique({
@@ -75,20 +92,31 @@ export class PerformancesService {
         status: true,
         maxTicketsPerUser: true,
         zones: { select: { id: true, type: true, price: true } },
-        salePhases: { select: { type: true, startsAt: true, endsAt: true } },
+        salePhases: {
+          select: { id: true, type: true, startsAt: true, endsAt: true },
+        },
       },
     });
     if (!performance || performance.status === 'DRAFT') {
       throw performanceNotFound();
     }
-    const open = performance.salePhases.some(
-      (p) => p.type === 'GENERAL' && p.startsAt <= now && now < p.endsAt,
-    );
+    const open = openPhase(performance.salePhases, now);
     if (performance.status !== 'PUBLISHED' || !open) {
       throw new AppException(
         HttpStatus.CONFLICT,
         ErrorCode.SALE_NOT_OPEN,
         'Tickets for this performance are not on sale right now',
+      );
+    }
+    if (
+      open.type === 'PRESALE' &&
+      !(await this.presale.hasRedeemed(open.id, userId))
+    ) {
+      throw new AppException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.PRESALE_CODE_REQUIRED,
+        'This presale is only for accounts that redeemed a presale code',
+        { salePhaseId: open.id },
       );
     }
     return {
@@ -123,6 +151,7 @@ export class PerformancesService {
             venue: dto.venue,
             startsAt: dto.startsAt,
             maxTicketsPerUser: dto.maxTicketsPerUser,
+            waitingRoomEnabled: dto.waitingRoomEnabled,
             salePhases: {
               create: dto.salePhases.map((p) => ({
                 type: p.type,
@@ -161,12 +190,41 @@ export class PerformancesService {
     return this.getVisible(id, organizer);
   }
 
-  async getVisible(
+  /**
+   * Status, waiting room flag and open sale phase, from the catalog cache
+   * (Redis), for the checks that run before any database query. Null when
+   * the performance does not exist.
+   */
+  async admissionInfo(
     id: string,
-    viewer: AuthUser | undefined,
-  ): Promise<PerformanceResponseDto> {
-    // Cached raw record; the draft check below runs on every read.
-    const performance = await this.cache.getOrLoad(
+    now: Date = new Date(),
+  ): Promise<AdmissionInfo | null> {
+    const performance = await this.cachedRecord(id);
+    if (!performance) return null;
+    const open = openPhase(performance.salePhases, now);
+    return {
+      status: performance.status,
+      // Entries cached before phase 7b lack the field: off.
+      waitingRoomEnabled: performance.waitingRoomEnabled ?? false,
+      openPhase: open ? { id: open.id, type: open.type } : null,
+      saleAhead: performance.salePhases.some((p) => now < p.endsAt),
+    };
+  }
+
+  /**
+   * Presale pre-check before the Redis gate: the open phase comes from the
+   * cache, and only during a PRESALE phase is the redemption read (one
+   * indexed row). getOnSale repeats the check from PostgreSQL.
+   */
+  async presaleAllows(id: string, userId: string): Promise<boolean> {
+    const open = (await this.admissionInfo(id))?.openPhase;
+    if (open?.type !== 'PRESALE') return true;
+    return this.presale.hasRedeemed(open.id, userId);
+  }
+
+  /** The raw record (drafts included) from the cache or PostgreSQL. */
+  private cachedRecord(id: string) {
+    return this.cache.getOrLoad(
       () => CatalogCacheService.performanceKey(id),
       () =>
         this.prisma.performance.findUnique({
@@ -174,6 +232,14 @@ export class PerformancesService {
           include: detailInclude,
         }),
     );
+  }
+
+  async getVisible(
+    id: string,
+    viewer: AuthUser | undefined,
+  ): Promise<PerformanceResponseDto> {
+    // Cached raw record; the draft check below runs on every read.
+    const performance = await this.cachedRecord(id);
     if (
       !performance ||
       (performance.status === 'DRAFT' && !isOwner(performance.concert, viewer))
@@ -188,6 +254,7 @@ export class PerformancesService {
       startsAt: performance.startsAt,
       status: performance.status,
       maxTicketsPerUser: performance.maxTicketsPerUser,
+      waitingRoomEnabled: performance.waitingRoomEnabled ?? false,
       zones: performance.zones,
       salePhases: performance.salePhases,
     };
@@ -216,6 +283,7 @@ export class PerformancesService {
         venue: dto.venue,
         startsAt: dto.startsAt,
         maxTicketsPerUser: dto.maxTicketsPerUser,
+        waitingRoomEnabled: dto.waitingRoomEnabled,
       },
     });
     await this.cache.invalidate({
@@ -378,6 +446,14 @@ export class PerformancesService {
     await this.concerts.assertOwner(performance.concertId, organizer);
     return performance;
   }
+}
+
+/** The sale phase open at `now` (phases never overlap), or undefined. */
+function openPhase<P extends { startsAt: Date; endsAt: Date }>(
+  phases: readonly P[],
+  now: Date,
+): P | undefined {
+  return phases.find((p) => p.startsAt <= now && now < p.endsAt);
 }
 
 function performanceNotFound(): AppException {
