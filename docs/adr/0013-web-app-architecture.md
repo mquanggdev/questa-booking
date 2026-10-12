@@ -92,4 +92,4 @@ Khi deploy, một reverse proxy có thể chuyển thẳng `/api` sang API để
 - Đích của `rewrites` bị cố định lúc build. Đổi địa chỉ API nội bộ thì phải build lại image.
 - Khách chưa đăng nhập tải trang sẽ thấy một request `401` trong console: lần thử khôi phục phiên khi chưa có cookie. Cookie là `httpOnly` nên JavaScript không biết trước nó có tồn tại hay không.
 - Sơ đồ ghế cập nhật bằng polling 5 giây cho đến khi có WebSocket ở giai đoạn 7a.
-- Deploy online được dời sang giai đoạn 9 ([ADR-0014](0014-defer-online-deploy.md)). Nếu khi đó web chạy trên Vercel, WebSocket (giai đoạn 7a) không đi qua rewrites được và phải nối thẳng tới domain của API.
+- Deploy online được dời sang giai đoạn 9 và chạy toàn bộ trên VPS sau Nginx ([ADR-0014](0014-defer-online-deploy.md)). Nginx chuyển cả `/api` lẫn WebSocket sang API, nên nguyên tắc một origin giữ được ở bản online.

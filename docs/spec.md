@@ -625,7 +625,7 @@ Hoàn thành khi: test chứng minh I7 trong ba tình huống: relay bị tắt 
 ### Giai đoạn 9: Vận hành
 
 - Metrics Prometheus và dashboard Grafana cho thông lượng, độ trễ, độ dài queue, độ trễ consumer.
-- Deploy bản demo online lần đầu. Hạ tầng chốt ở đầu giai đoạn, dựa trên phân tích ở [ADR-0014](adr/0014-defer-online-deploy.md).
+- Deploy bản demo online lần đầu: toàn bộ stack trên VPS, theo các lưu ý ở [ADR-0014](adr/0014-defer-online-deploy.md).
 - CI build image, đẩy lên GitHub Container Registry, deploy qua SSH, HTTPS bằng Let's Encrypt.
 - README hoàn chỉnh.
 
@@ -663,4 +663,4 @@ README có hai bản: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Vi�
 | --- | --- | --- |
 | Code VNPay | Chủ dự án cung cấp từ dự án ecommerce | 5 |
 | Dịch vụ gửi email production | Chưa chọn; ở local dùng Mailpit | 8 |
-| Hạ tầng cho bản online | Đã có tên miền và một VPS 1 vCPU / 1 GB đang chạy dự án khác; phương án đang cân nhắc: web trên Vercel và backend trên VPS, hoặc nâng VPS ([ADR-0014](adr/0014-defer-online-deploy.md)) | 9 |
+| Hạ tầng cho bản online | Đã chốt: toàn bộ stack trên một VPS 3 vCPU / 3,5 GB RAM / 60 GB, dùng chung với một dự án khác của tác giả, đứng sau Nginx của dự án đó ([ADR-0014](adr/0014-defer-online-deploy.md)). Deploy ở giai đoạn 9 | 9 |

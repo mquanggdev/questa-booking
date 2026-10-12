@@ -1,6 +1,6 @@
 # ADR-0014: Dời deploy online sang giai đoạn 9
 
-- Trạng thái: Đã chấp nhận
+- Trạng thái: Đã chấp nhận (cập nhật 2026-10-12: VPS đã nâng cấp, xem cuối tài liệu)
 - Ngày: 2026-10-12
 - Giai đoạn: 6
 
@@ -60,3 +60,13 @@
 - Dự án kia không bị đụng tới ở giai đoạn này.
 - Giai đoạn 9 có thêm việc deploy lần đầu, và bắt đầu bằng việc chốt hạ tầng: dùng phân tích ở trên, cộng với cấu hình VPS lúc đó.
 - Tag của giai đoạn 6 đổi từ `v3-demo` thành `v3-web`, cho đúng nội dung.
+
+## Cập nhật 2026-10-12: VPS đã nâng cấp
+
+Chủ dự án nâng VPS lên **3 vCPU, 3,5 GB RAM, 60 GB SSD**. Hệ quả:
+
+- **Hạ tầng của bản online đã chốt: toàn bộ stack chạy trên VPS**, sau Nginx đang có, đúng như đặc tả mục 11. Không dùng Vercel. Mục 5 ở trên (WebSocket qua rewrites của Vercel) không còn áp dụng: WebSocket đi qua Nginx, cùng origin với web.
+- Mục 6 ở trên không còn đúng: ước tính khi đã có đủ các giai đoạn (2 instance API, Kafka một broker, Prometheus và Grafana, cộng dự án kia) là khoảng 2,4–3,0 GB, vừa 3,5 GB nếu giới hạn heap của Kafka và thời gian giữ log.
+- Các mục 1–4 vẫn nguyên giá trị: tên project Compose riêng, cấu hình Nginx nằm trong repo dự án kia cùng ba cách chặn Nginx không khởi động, không build trên VPS, PostgreSQL 18 và Redis `noeviction`.
+- **Thời điểm deploy vẫn là giai đoạn 9.** Nâng cấp chỉ gỡ ràng buộc về RAM; lý do còn lại (giá trị chính đo ở local, deploy một lần cho bản hoàn chỉnh) vẫn giữ.
+
