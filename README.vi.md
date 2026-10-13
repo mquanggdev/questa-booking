@@ -4,7 +4,7 @@
 
 Backend bán vé concert, được xây để bán đúng số ghế đang có khi hàng nghìn người cùng mua một lúc, và chứng minh điều đó bằng số liệu.
 
-> **Trạng thái:** Xong giai đoạn 7b: mã ưu tiên (dùng một lần, mỗi tài khoản một mã cho mỗi đợt bán trước, do database bảo đảm) và hàng chờ ảo cho người mua vào theo tốc độ đã đo, vị trí cập nhật trực tiếp qua WebSocket. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền, trang web Next.js, 2 instance API sau Nginx với sơ đồ ghế realtime, cache danh mục và rate limit. Bản demo online có ở giai đoạn 9.
+> **Trạng thái:** Xong giai đoạn 8: mỗi thay đổi của đơn hàng ghi sự kiện vào bảng outbox trong cùng transaction; relay gửi sự kiện lên Kafka, và ba consumer (email vé kèm mã QR, thống kê bán vé, nhật ký audit) áp dụng mỗi sự kiện đúng một lần, đã chứng minh khi relay chết, khi Kafka tạm ngừng và khi một sự kiện đến hai lần. Các giai đoạn trước: chống bán trùng ở database, bộ lọc Redis, vé tự hết hạn, thanh toán qua IPN có chữ ký và hoàn tiền, trang web Next.js, 2 instance API sau Nginx với sơ đồ ghế realtime, mã ưu tiên và hàng chờ ảo. Bản demo online có ở giai đoạn 9.
 
 ![Mua vé: đăng ký, chọn ghế và vé đứng, giữ vé, thanh toán ở cổng giả lập, nhận vé QR](docs/assets/buying-flow.gif)
 
@@ -30,13 +30,15 @@ docker compose up -d --build
 curl localhost:3000/api/v1/health/ready
 ```
 
-`docker compose up` khởi động PostgreSQL và Redis, chạy migration, rồi khởi động 2 instance API, tiến trình worker chạy nền và trang web, tất cả sau Nginx, cửa vào duy nhất (`/` sang trang web, `/api` và `/socket.io` sang các instance API).
+`docker compose up` khởi động PostgreSQL, Redis, Kafka và Mailpit, chạy migration, rồi khởi động 2 instance API, tiến trình worker chạy nền và trang web, tất cả sau Nginx, cửa vào duy nhất (`/` sang trang web, `/api` và `/socket.io` sang các instance API).
 
 - Trang web: <http://localhost:3200>. Chọn đêm diễn, chọn ghế trên sơ đồ, giữ vé, thanh toán ở cổng giả lập, nhận vé QR. Ghế người khác vừa giữ hoặc mua đổi màu ngay. Mỗi response ghi instance đã xử lý trong header `X-Instance`.
 - Sau khi seed: "Questa Arena Live" (10.000 vé) bán qua hàng chờ ảo, còn "Questa Fan Club Night" đang trong đợt bán trước; 50 mã ưu tiên của nó được ghi vào `load-tests/data/fixtures.json`.
 
 Mặc định thanh toán dùng cổng giả lập chạy cục bộ (`PAYMENT_PROVIDER=fake`), nên không cần tài khoản nào. Muốn trả tiền trên VNPay sandbox thật, xem [`docs/vnpay-sandbox.md`](docs/vnpay-sandbox.md).
 
+- Ban tổ chức theo dõi mở bán trực tiếp ở `/performances/<id>/sales` (đăng nhập bằng `organizer@questa.test`).
+- Email (vé kèm mã QR, hủy đêm diễn, hoàn tiền) được gửi tới Mailpit, một hộp thư chạy ở máy: <http://localhost:8025>.
 - Tài liệu API (Swagger): <http://localhost:3000/api/docs>
 - Nạp dữ liệu mẫu (xóa sạch database dev):
 
@@ -60,7 +62,7 @@ pnpm --filter @questa/web dev        # http://localhost:3200
 | --- | --- |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format:check` | Kiểm tra tĩnh |
 | `pnpm test` | Unit test |
-| `pnpm test:e2e` | E2E test trên database riêng `questa_test` (cần PostgreSQL và Redis) |
+| `pnpm test:e2e` | E2E test trên database riêng `questa_test` và topic Kafka riêng (cần PostgreSQL, Redis, Kafka và Mailpit) |
 | `pnpm test:browser` | Test Playwright luồng mua vé trên trình duyệt thật (cần stack đang chạy, đã seed, và `RATE_LIMIT_ENABLED=false`) |
 
 ## Benchmark
@@ -88,6 +90,8 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | **7b: mở bán 10.000 vé** | 4.000 khách vào hàng chờ trước giờ mở; 5% cố lách hàng | hàng chờ cho vào **50 người/s**: giữ vé p50 **20 ms**, p95 **99 ms**, 0 lỗi, **0 trên 114** lượt lách hàng lọt qua |
 | 7b | cùng cú dồn tải, cho vào 100 người/s | vượt sức chứa trên máy này: giữ vé p50 3,7 s, có 503 (pool DB cạn). Tốc độ cho vào được đặt theo số đo |
 | 7b | cùng cú dồn tải, **không hàng chờ** | giữ vé p95 **10,7 s**, 16% request lỗi 503; vẫn 0 vi phạm bất biến |
+| **8: outbox + Kafka** | 5.000 khách: giữ vé → thanh toán → nhận vé, rồi chờ sự kiện xử lý xong | 500 sự kiện `order.paid`, mỗi sự kiện được cả 3 consumer áp dụng **đúng một lần** (**0 vi phạm I7**), audit và thống kê khớp; thông lượng như giai đoạn 5 |
+| 8 | giết worker (relay + consumer) ở giây thứ 8 | sau khi khởi động lại, mọi sự kiện vẫn được áp dụng đúng một lần: **0 vi phạm** |
 | 7b | lần chạy mở bán đầu tiên, trước khi sửa | 28.457 lỗi 502: hàng đợi kết nối của Node tràn, và lỗi đua keep-alive khiến Nginx đánh dấu cả 2 instance khỏe là chết ([ADR-0016](docs/adr/0016-presale-codes-and-waiting-room.md)) |
 
 > Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).

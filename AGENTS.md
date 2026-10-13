@@ -18,7 +18,7 @@ Nguồn quyết định: [`docs/spec.md`](docs/spec.md). Khi đặc tả thiếu
 
 ## Quy trình
 
-1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **7b**.
+1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **8**.
 2. Cuối mỗi giai đoạn: kiểm tra "Định nghĩa hoàn thành" ở mục 10 của đặc tả, rồi **dừng lại báo cáo** cho chủ dự án. Chủ dự án review xong mới gắn tag git.
 3. Giai đoạn 2 cố ý chứa lỗi bán trùng (tag `v0-naive`). Từ giai đoạn 3, mọi kịch bản load test phải cho 0 vi phạm bất biến.
 
@@ -94,13 +94,13 @@ Chạy từ thư mục gốc repo:
 
 | Lệnh | Việc |
 | --- | --- |
-| `docker compose up -d --build` | Dựng PostgreSQL, Redis, chạy migration, 2 instance API, worker, web, tất cả sau Nginx (http://localhost:3200; API qua Nginx ở `API_PORT`) |
+| `docker compose up -d --build` | Dựng PostgreSQL, Redis, Kafka, Mailpit, chạy migration, 2 instance API, worker, web, tất cả sau Nginx (http://localhost:3200; API qua Nginx ở `API_PORT`) |
 | `pnpm install` | Cài dependency (tự chạy `prisma generate`) |
 | `pnpm format:check` / `pnpm lint` / `pnpm typecheck` | Kiểm tra code |
 | `pnpm test` | Unit test (không cần DB) |
-| `pnpm test:e2e` | E2E test trên database riêng `questa_test` và Redis DB 1 (cần PostgreSQL và Redis đang chạy) |
+| `pnpm test:e2e` | E2E test trên database riêng `questa_test`, Redis DB 1 và topic Kafka riêng (cần PostgreSQL, Redis, Kafka, Mailpit đang chạy) |
 | `pnpm --filter @questa/api prisma:migrate` | Tạo và áp dụng migration mới |
-| `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in\|on-sale>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md`; `--kill-after N` giết một instance API sau N giây. Cần `RATE_LIMIT_ENABLED=false docker compose up -d api` trước khi đo |
+| `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in\|on-sale>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md`; `--kill-after N` giết một instance API sau N giây (`--kill-service worker` để giết worker). Cần `RATE_LIMIT_ENABLED=false docker compose up -d api` trước khi đo |
 | `pnpm test:browser` | Test Playwright luồng mua vé (cần stack đang chạy, đã seed, và `RATE_LIMIT_ENABLED=false docker compose up -d api`) |
 | `pnpm --filter @questa/api openapi:export` rồi `pnpm --filter @questa/web api:types` | Sinh lại `openapi.json` và kiểu dữ liệu của web sau khi đổi API |
 | `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
@@ -113,6 +113,8 @@ Cổng trên máy chủ dự án:
 - API: `API_PORT` trong `.env`. Máy chủ dự án đặt `3100`, vì 3000 đã bị dự án khác chiếm.
 - Web: `WEB_PORT`, mặc định `3200` (cả `next dev`).
 - Từ giai đoạn 7a, Nginx giữ cả `WEB_PORT` lẫn `API_PORT`; các instance API không mở cổng trực tiếp.
+- Kafka: `9094` (máy host); trong mạng Docker là `kafka:9092`.
+- Mailpit: hộp thư `8025`, SMTP `1025`.
 
 ## Skill
 

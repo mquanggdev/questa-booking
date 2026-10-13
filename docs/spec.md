@@ -287,8 +287,8 @@ Chỉ tài khoản đã kích hoạt mới giữ được vé. Đợt `GENERAL` 
 
 1. Ban tổ chức hủy đêm diễn; `performances.status` chuyển sang `CANCELLED` và hệ thống ngừng nhận giữ vé.
 2. Mọi đơn `PENDING` chuyển sang `CANCELLED`, vé đang giữ được nhả.
-3. Mọi đơn `PAID` chuyển sang `REFUND_PENDING`; mỗi payment đã thành công có một job hoàn tiền riêng trong BullMQ. Trong cùng transaction, vé của đơn bị vô hiệu ngay, ghế về `AVAILABLE` và bộ đếm vé đứng giảm, để I2 và I9 luôn đúng (đêm diễn đã hủy nên không ai mua lại được).
-4. Khi cổng thanh toán xác nhận, đơn chuyển sang `REFUNDED` và sự kiện `order.refunded` được ghi vào outbox (giai đoạn 8).
+3. Mọi đơn `PAID` chuyển sang `REFUND_PENDING`; mỗi payment đã thành công có một job hoàn tiền riêng trong BullMQ. Trong cùng transaction, vé của đơn bị vô hiệu ngay, ghế về `AVAILABLE` và bộ đếm vé đứng giảm, để I2 và I9 luôn đúng (đêm diễn đã hủy nên không ai mua lại được), và sự kiện `order.cancelled` (`wasPaid: true`) được ghi vào outbox.
+4. Khi cổng thanh toán xác nhận, đơn chuyển sang `REFUNDED` và sự kiện `order.refunded` được ghi vào outbox.
 
 Bước 2 và 3 chạy trong worker, mỗi đơn một transaction ngắn. Một job quét định kỳ chạy lại phần còn dở nếu worker dừng giữa chừng ([ADR-0012](adr/0012-payments-ipn-and-refunds.md)).
 
@@ -394,6 +394,7 @@ Mặc định mọi endpoint cần access token (`Authorization: Bearer`). Endpo
 | `/queue` | `join` | Client gửi (cần đăng nhập) | `performanceId` muốn theo dõi; ack là trạng thái hiện tại của mình |
 | `/queue` | `queue.position` | Server gửi, cho cả hàng | `admittedThrough` và `waiting`; vị trí = số của mình − `admittedThrough` |
 | `/queue` | `queue.admitted` | Server gửi, cho một người | Vé vào cửa và thời hạn (`expiresAt`) |
+| `/sales` | `join` | Client gửi (chủ concert) | `performanceId` muốn theo dõi; ack là số liệu hiện tại |
 | `/sales` | `sales.updated` | Server gửi, chỉ cho `ORGANIZER` | Số vé đã bán theo khu, doanh thu, số vé đang giữ, độ dài hàng chờ |
 
 ### Giới hạn tốc độ
@@ -439,11 +440,11 @@ BullMQ xử lý công việc nền có hẹn giờ và retry bên trong ứng d�
 | --- | --- | --- |
 | `orders.events` | `orderId` | `order.paid`, `order.expired`, `order.cancelled`, `order.refunded` |
 
-| Consumer group | Module | Việc làm khi nhận `order.paid` |
+| Consumer group | Module | Việc làm |
 | --- | --- | --- |
-| `notifications` | `notifications` | Gửi email kèm vé QR |
-| `analytics` | `analytics` | Cập nhật `performance_sales_stats`, phát `sales.updated` |
-| `audit` | `audit` | Ghi `audit_logs` |
+| `notifications` | `notifications` | Email cho người mua: vé kèm mã QR (`order.paid`), đêm diễn bị hủy (`order.cancelled` do hủy đêm diễn), đã hoàn tiền (`order.refunded`) |
+| `analytics` | `analytics` | `order.paid` cộng vào `performance_sales_stats`; `order.cancelled` có `wasPaid` trừ đi; phát `sales.updated` |
+| `audit` | `audit` | Ghi một dòng `audit_logs` cho mỗi sự kiện |
 
 Mỗi sự kiện có cấu trúc chung:
 
@@ -458,10 +459,14 @@ Mỗi sự kiện có cấu trúc chung:
     "userId": "uuid",
     "performanceId": "uuid",
     "totalAmount": 1500000,
-    "items": [{ "zoneId": "uuid", "seatId": "uuid hoặc null" }]
+    "items": [{ "zoneId": "uuid", "seatId": "uuid hoặc null", "price": 1000000 }],
+    "reason": "chỉ có ở order.cancelled: CUSTOMER hoặc PERFORMANCE_CANCELLED",
+    "wasPaid": "chỉ có ở order.cancelled: đơn đã PAID, lượt bán bị đảo ngược"
   }
 }
 ```
+
+`eventId` là id của dòng outbox; cột `payload` chỉ lưu `data`, relay bọc phong bì khi gửi. Với `order.refunded`, `totalAmount` là số tiền đã hoàn.
 
 ### Outbox pattern
 
@@ -471,9 +476,9 @@ Mỗi sự kiện có cấu trúc chung:
 2. Relay gửi lên Kafka, chờ xác nhận, rồi ghi `published_at`.
 3. Nếu relay chết giữa chừng, sự kiện được gửi lại. Kafka vì thế có thể nhận trùng.
 4. Mỗi consumer chèn (`consumer`, `event_id`) vào `processed_events` trong cùng transaction với tác dụng của nó. Trùng khóa nghĩa là đã xử lý, bỏ qua.
-5. Sự kiện lỗi quá số lần retry được chuyển sang topic `orders.events.dlq`.
+5. Sự kiện lỗi quá số lần retry (`CONSUMER_MAX_ATTEMPTS`, có backoff) được chuyển sang topic `orders.events.dlq`, kèm header `consumer`, `error`, `attempts`.
 
-Giao nhận vì vậy là ít nhất một lần ở Kafka và đúng một lần về mặt tác dụng ở consumer.
+Giao nhận vì vậy là ít nhất một lần ở Kafka và đúng một lần về mặt tác dụng ở consumer. Riêng email không thể nằm trong transaction: nó được gửi trước khi transaction ghi `processed_events` commit, nên không bao giờ mất và hiếm khi gửi hai lần (cùng `Message-ID`). Lý do và các phương án đã loại: [ADR-0017](adr/0017-outbox-kafka-and-consumers.md).
 
 ## 9. Yêu cầu phi chức năng và load test
 
@@ -650,6 +655,8 @@ Hoàn thành khi: có test tự động cho I11; kịch bản `on-sale` có số
 - Ba consumer: `notifications`, `analytics`, `audit`, đều idempotent qua `processed_events`; topic dead letter.
 - Email vé gửi qua consumer `notifications` (Mailpit ở local).
 - Trang theo dõi mở bán trong `apps/web`, nhận `sales.updated`.
+
+Thiết kế: [ADR-0017](adr/0017-outbox-kafka-and-consumers.md).
 
 Hoàn thành khi: test chứng minh I7 trong ba tình huống: relay bị tắt giữa chừng, Kafka tạm ngừng rồi chạy lại, một sự kiện bị gửi hai lần.
 
