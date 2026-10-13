@@ -32,7 +32,9 @@ export function PresalePanel({
   salePhaseId: string;
   endsAt: string;
 }) {
-  const { status: auth } = useAuth();
+  const { status: auth, user } = useAuth();
+  // Only customers redeem codes (the API refuses other roles).
+  const isCustomer = user?.role === 'CUSTOMER';
   const queryClient = useQueryClient();
   const queryKey = ['presale', performanceId];
   const [code, setCode] = useState('');
@@ -41,7 +43,7 @@ export function PresalePanel({
 
   const mine = useQuery({
     queryKey,
-    enabled: auth === 'authenticated',
+    enabled: auth === 'authenticated' && isCustomer,
     queryFn: () =>
       call(
         api.GET('/api/v1/performances/{id}/presale/me', {
@@ -94,24 +96,32 @@ export function PresalePanel({
           để nhập mã ưu tiên.
         </p>
       )}
-      {auth === 'authenticated' && !redeemed && !mine.isLoading && (
-        <form onSubmit={redeem} className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
-            <Label htmlFor="presale-code">Mã ưu tiên</Label>
-            <Input
-              id="presale-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              placeholder="K7QM-2XRP-9D"
-              autoComplete="off"
-              className="w-48 font-mono uppercase"
-            />
-          </div>
-          <Button type="submit" disabled={sending || code.trim() === ''}>
-            {sending ? 'Đang kích hoạt…' : 'Kích hoạt'}
-          </Button>
-        </form>
+      {auth === 'authenticated' && !isCustomer && (
+        <p className="text-sm text-muted-foreground">
+          Chỉ tài khoản khách mua vé mới nhập được mã ưu tiên.
+        </p>
       )}
+      {auth === 'authenticated' &&
+        isCustomer &&
+        !redeemed &&
+        !mine.isLoading && (
+          <form onSubmit={redeem} className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="presale-code">Mã ưu tiên</Label>
+              <Input
+                id="presale-code"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                placeholder="K7QM-2XRP-9D"
+                autoComplete="off"
+                className="w-48 font-mono uppercase"
+              />
+            </div>
+            <Button type="submit" disabled={sending || code.trim() === ''}>
+              {sending ? 'Đang kích hoạt…' : 'Kích hoạt'}
+            </Button>
+          </form>
+        )}
       {error && (
         <Alert variant="destructive">
           <AlertDescription>{error}</AlertDescription>

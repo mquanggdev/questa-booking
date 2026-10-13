@@ -45,7 +45,7 @@ export function SeatPicker({
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { status } = useAuth();
+  const { status, user } = useAuth();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [standing, setStanding] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
@@ -283,6 +283,11 @@ export function SeatPicker({
           >
             Đăng nhập để giữ vé
           </Link>
+        ) : status === 'authenticated' && user?.role !== 'CUSTOMER' ? (
+          // Holding tickets is a customer's (the API refuses other roles).
+          <p className="text-sm text-muted-foreground">
+            Tài khoản ban tổ chức chỉ xem sơ đồ ghế, không giữ vé.
+          </p>
         ) : (
           <Button
             className="w-full"

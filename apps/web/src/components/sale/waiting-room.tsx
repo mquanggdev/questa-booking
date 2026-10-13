@@ -27,8 +27,13 @@ export function WaitingRoom({
   performanceId: string;
   children: React.ReactNode;
 }) {
-  const { status: auth } = useAuth();
-  const room = useWaitingRoom(performanceId, auth === 'authenticated');
+  const { status: auth, user } = useAuth();
+  // Only customers queue (the API refuses other roles).
+  const isCustomer = user?.role === 'CUSTOMER';
+  const room = useWaitingRoom(
+    performanceId,
+    auth === 'authenticated' && isCustomer,
+  );
   const [error, setError] = useState<string | null>(null);
   const [joining, setJoining] = useState(false);
 
@@ -46,6 +51,17 @@ export function WaitingRoom({
           >
             Đăng nhập để vào hàng chờ
           </Link>
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  if (auth === 'authenticated' && !isCustomer) {
+    return (
+      <Alert>
+        <AlertDescription>
+          Đêm diễn này dùng hàng chờ ảo cho khách mua vé. Tài khoản ban tổ chức
+          không xếp hàng; số người đang chờ hiện ở trang &quot;Theo dõi mở
+          bán&quot;.
         </AlertDescription>
       </Alert>
     );
