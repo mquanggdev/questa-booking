@@ -56,14 +56,19 @@ export function WaitingRoom({
     );
   }
   if (auth === 'authenticated' && !isCustomer) {
+    // Organizers do not queue; they see the seat map like on any other
+    // performance (read-only: the picker hides its hold button for them).
     return (
-      <Alert>
-        <AlertDescription>
-          Đêm diễn này dùng hàng chờ ảo cho khách mua vé. Tài khoản ban tổ chức
-          không xếp hàng; số người đang chờ hiện ở trang &quot;Theo dõi mở
-          bán&quot;.
-        </AlertDescription>
-      </Alert>
+      <div className="space-y-4">
+        <Alert>
+          <AlertDescription>
+            Đêm diễn này dùng hàng chờ ảo: khách mua vé xếp hàng trước khi thấy
+            sơ đồ ghế. Ban tổ chức không cần xếp hàng; số người đang chờ hiện ở
+            trang &quot;Theo dõi mở bán&quot;.
+          </AlertDescription>
+        </Alert>
+        {children}
+      </div>
     );
   }
   if (auth === 'loading' || room.isLoading || !room.status) {
