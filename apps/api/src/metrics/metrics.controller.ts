@@ -11,7 +11,8 @@ import { MetricsService } from './metrics.service.js';
  */
 @ApiExcludeController()
 @Public()
-@SkipThrottle()
+// Named throttlers: a bare @SkipThrottle() only skips one called "default".
+@SkipThrottle({ ip: true, user: true })
 @Controller('metrics')
 export class MetricsController {
   constructor(private readonly metrics: MetricsService) {}

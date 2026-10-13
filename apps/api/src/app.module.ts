@@ -33,9 +33,10 @@ import { REDIS, RedisModule } from './redis/redis.module.js';
           transport: config.get('LOG_PRETTY')
             ? { target: 'pino-pretty', options: { singleLine: true } }
             : undefined,
-          // Health probes run every few seconds; logging them is noise.
+          // Health probes and Prometheus scrapes run every few seconds;
+          // logging them is noise.
           autoLogging: {
-            ignore: (req) => req.url?.includes('/health') ?? false,
+            ignore: (req) => /\/(health|metrics)/.test(req.url ?? ''),
           },
           redact: [
             'req.headers.authorization',
