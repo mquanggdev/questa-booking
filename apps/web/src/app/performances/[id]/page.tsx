@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { PresalePanel } from '@/components/sale/presale-panel';
+import { OrganizerLink } from '@/components/sales/organizer-link';
 import { WaitingRoom } from '@/components/sale/waiting-room';
 import { SeatPicker } from '@/components/seat-map/seat-picker';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -60,6 +61,9 @@ async function Performance({
         <p className="text-muted-foreground">
           {formatDateTime(p.startsAt)} · {p.venue}
         </p>
+        <div className="mt-2">
+          <OrganizerLink performanceId={p.id} />
+        </div>
       </div>
       {p.status === 'CANCELLED' ? (
         <Alert variant="destructive">
