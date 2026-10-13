@@ -37,6 +37,14 @@ x-api-env: &api-env
   VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
   VNPAY_URL: ${VNPAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
   VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
+  KAFKA_BROKERS: kafka:9092
+  KAFKA_TOPIC_PREFIX: ${KAFKA_TOPIC_PREFIX:-}
+  KAFKA_SEND_TIMEOUT_MS: ${KAFKA_SEND_TIMEOUT_MS:-10000}
+  OUTBOX_RELAY_EVERY_MS: ${OUTBOX_RELAY_EVERY_MS:-500}
+  OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-100}
+  CONSUMER_MAX_ATTEMPTS: ${CONSUMER_MAX_ATTEMPTS:-5}
+  SMTP_URL: smtp://mailpit:1025
+  MAIL_FROM: ${MAIL_FROM:-Questa Booking <tickets@questa.test>}
 
 services:
   postgres:
@@ -71,6 +79,51 @@ services:
       timeout: 3s
       retries: 10
     mem_limit: 256m
+
+  # Event stream (phase 8): one Kafka node in KRaft mode (no ZooKeeper),
+  # broker and controller in the same process. Containers use kafka:9092;
+  # the host (e2e tests, tools) uses localhost:9094.
+  kafka:
+    image: apache/kafka:4.1.2
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_PORT:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # One node: internal topics cannot have more than one replica.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topics are created by the worker with explicit settings, never by a
+      # typo in a topic name.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      KAFKA_HEAP_OPTS: -Xmx384m -Xms384m
+    ports:
+      - '${KAFKA_PORT:-9094}:9094'
+    volumes:
+      - kafkadata:/var/lib/kafka/data
+    healthcheck:
+      test: ['CMD-SHELL', '/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    mem_limit: 768m
+
+  # Local SMTP server with a web inbox (phase 8): ticket emails end up here,
+  # never at a real address. Inbox: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27.10
+    ports:
+      - '${MAILPIT_UI_PORT:-8025}:8025'
+      - '${SMTP_PORT:-1025}:1025'
+    mem_limit: 64m
 
   # One-off: applies pending migrations, then exits. The API starts only after
   # it succeeds, so a fresh machine gets a ready schema from `docker compose up`.
@@ -109,7 +162,8 @@ services:
       retries: 5
     mem_limit: 512m
 
-  # Background jobs (BullMQ): order expiry, sweep, Redis counter repair.
+  # Background jobs (BullMQ): order expiry, sweep, Redis counter repair;
+  # from phase 8 also the outbox relay and the Kafka consumers.
   # Same image as the API, different entry point; no HTTP port.
   worker:
     build:
@@ -123,6 +177,10 @@ services:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     restart: unless-stopped
     mem_limit: 256m
 
@@ -188,3 +246,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  kafkadata:

@@ -1,6 +1,7 @@
 packages:
   - apps/*
 allowBuilds:
+  '@confluentinc/kafka-javascript': true
   '@prisma/engines': true
   '@scarf/scarf': false
   argon2: true
