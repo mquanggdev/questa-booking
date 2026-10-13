@@ -12,6 +12,8 @@ import {
 import { PerformancesService } from '../concerts/performances.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import { OrdersService } from '../orders/orders.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
+import { OrderEventType } from '../outbox/order-events.js';
 import { ReleaseService } from '../reservations/release.service.js';
 import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
@@ -40,6 +42,7 @@ export class PerformanceCancellationService {
     private readonly tickets: TicketsService,
     private readonly seatEvents: SeatEventsService,
     private readonly refunds: RefundsService,
+    private readonly outbox: OutboxService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly queue: Queue,
   ) {}
 
@@ -107,8 +110,21 @@ export class PerformanceCancellationService {
     tx: Prisma.TransactionClient,
     orderId: string,
   ): Promise<{ refundIds: string[]; seatIds: string[]; zoneIds: string[] }> {
-    const items = await this.orders.unpay(tx, orderId);
-    if (!items) return { refundIds: [], seatIds: [], zoneIds: [] };
+    const unpaid = await this.orders.unpay(tx, orderId);
+    if (!unpaid) return { refundIds: [], seatIds: [], zoneIds: [] };
+    const { items, ...header } = unpaid;
+    // The sale is reversed now (tickets voided, inventory back), so the
+    // event goes out now; order.refunded follows once the money is back.
+    await this.outbox.add(tx, OrderEventType.CANCELLED, {
+      ...header,
+      items: items.map(({ zoneId, seatId, price }) => ({
+        zoneId,
+        seatId,
+        price,
+      })),
+      reason: 'PERFORMANCE_CANCELLED',
+      wasPaid: true,
+    });
     const seatIds = items.flatMap((i) => (i.seatId ? [i.seatId] : []));
     await this.seats.unsell(tx, seatIds);
     const perZone = new Map<string, number>();

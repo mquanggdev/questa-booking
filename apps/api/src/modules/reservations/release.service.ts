@@ -6,6 +6,8 @@ import type { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { ZonesService } from '../concerts/zones.service.js';
 import { OrdersService, type ReleasedItem } from '../orders/orders.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
+import { OrderEventType } from '../outbox/order-events.js';
 import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { HoldGateService } from './gate/hold-gate.service.js';
@@ -30,6 +32,7 @@ export class ReleaseService {
     private readonly zones: ZonesService,
     private readonly gate: HoldGateService,
     private readonly seatEvents: SeatEventsService,
+    private readonly outbox: OutboxService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -96,6 +99,26 @@ export class ReleaseService {
   ): Promise<ReleasedSet | null> {
     const closed = await this.orders.closePending(tx, orderId, close);
     if (!closed) return null;
+    const { items, ...header } = closed;
+    const eventItems = items.map(({ zoneId, seatId, price }) => ({
+      zoneId,
+      seatId,
+      price,
+    }));
+    if (close.to === 'EXPIRED') {
+      await this.outbox.add(tx, OrderEventType.EXPIRED, {
+        ...header,
+        items: eventItems,
+      });
+    } else {
+      await this.outbox.add(tx, OrderEventType.CANCELLED, {
+        ...header,
+        items: eventItems,
+        // The owner cancels; without a user, the performance was cancelled.
+        reason: close.userId ? 'CUSTOMER' : 'PERFORMANCE_CANCELLED',
+        wasPaid: false,
+      });
+    }
     const set = group(closed.performanceId, closed.items);
     await this.seats.release(tx, set.seatIds);
     for (const s of set.standing) {

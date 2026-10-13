@@ -228,6 +228,26 @@ export class PerformancesService {
     return this.presale.hasRedeemed(open.id, userId);
   }
 
+  /** What a message to a buyer names: the concert, the venue, the time. */
+  async detailsOf(
+    id: string,
+  ): Promise<{ concertName: string; venue: string; startsAt: Date }> {
+    const performance = await this.cachedRecord(id);
+    if (!performance) throw performanceNotFound();
+    return {
+      concertName: performance.concert.name,
+      venue: performance.venue,
+      startsAt: performance.startsAt,
+    };
+  }
+
+  /** Zones of a performance, drafts included (callers check access first). */
+  async zonesOf(id: string): Promise<PerformanceResponseDto['zones']> {
+    const performance = await this.cachedRecord(id);
+    if (!performance) throw performanceNotFound();
+    return performance.zones;
+  }
+
   /** The raw record (drafts included) from the cache or PostgreSQL. */
   private cachedRecord(id: string) {
     return this.cache.getOrLoad(
@@ -441,7 +461,8 @@ export class PerformancesService {
     }));
   }
 
-  private async assertOwner(id: string, organizer: AuthUser) {
+  /** The performance, if `organizer` owns its concert; 404 or 403 otherwise. */
+  async assertOwner(id: string, organizer: AuthUser) {
     const performance = await this.prisma.performance.findUnique({
       where: { id },
       select: { id: true, status: true, concertId: true },

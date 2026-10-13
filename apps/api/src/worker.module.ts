@@ -9,6 +9,7 @@ import { ReservationsModule } from './modules/reservations/reservations.module.j
 import { SeatBroadcastService } from './modules/seats/seat-broadcast.service.js';
 import { SeatsModule } from './modules/seats/seats.module.js';
 import { ReservationsProcessor } from './modules/reservations/reservations.processor.js';
+import { KafkaModule } from './kafka/kafka.module.js';
 import { WaitingRoomModule } from './modules/waiting-room/waiting-room.module.js';
 import { WaitingRoomProcessor } from './modules/waiting-room/waiting-room.processor.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -39,6 +40,7 @@ import { RedisModule } from './redis/redis.module.js';
     ConcertsModule,
     SeatsModule,
     WaitingRoomModule,
+    KafkaModule,
   ],
   providers: [
     ReservationsProcessor,

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OutboxModule } from '../outbox/outbox.module.js';
 import { ConcertsModule } from '../concerts/concerts.module.js';
 import { OrdersModule } from '../orders/orders.module.js';
 import { SeatsModule } from '../seats/seats.module.js';
@@ -10,7 +11,13 @@ import { ReservationsController } from './reservations.controller.js';
 import { ReservationsService } from './reservations.service.js';
 
 @Module({
-  imports: [ConcertsModule, SeatsModule, OrdersModule, WaitingRoomModule],
+  imports: [
+    OutboxModule,
+    ConcertsModule,
+    SeatsModule,
+    OrdersModule,
+    WaitingRoomModule,
+  ],
   controllers: [ReservationsController, OrderCancellationController],
   providers: [ReservationsService, ReleaseService, HoldGateService],
   exports: [ReleaseService, HoldGateService],

@@ -305,6 +305,16 @@ export class SeatsService {
     return new Map(groups.map((g) => [g.zoneId, g._count._all]));
   }
 
+  /** HELD seat count per zone (sales dashboard). */
+  async countHeldByZone(performanceId: string): Promise<Map<string, number>> {
+    const groups = await this.prisma.seat.groupBy({
+      by: ['zoneId'],
+      where: { performanceId, status: 'HELD' },
+      _count: { _all: true },
+    });
+    return new Map(groups.map((g) => [g.zoneId, g._count._all]));
+  }
+
   /** Current status of some seats (the realtime flusher's read). */
   statusesOf(
     seatIds: readonly string[],

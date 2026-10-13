@@ -1119,6 +1119,42 @@
           "tickets"
         ]
       }
+    },
+    "/api/v1/performances/{id}/stats": {
+      "get": {
+        "operationId": "SalesController_get",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SalesStatsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Tickets sold and revenue per zone (from order events), tickets held and\npeople in the waiting room right now. Live: WebSocket namespace /sales.",
+        "tags": [
+          "analytics"
+        ]
+      }
     }
   },
   "info": {
@@ -2332,6 +2368,95 @@
           "checkedInAt",
           "zoneName",
           "seatLabel"
+        ]
+      },
+      "ZoneSalesDto": {
+        "type": "object",
+        "properties": {
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "SEATED",
+              "STANDING"
+            ],
+            "type": "string"
+          },
+          "capacity": {
+            "type": "number"
+          },
+          "ticketsSold": {
+            "type": "number",
+            "description": "From order.paid events (analytics consumer)"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "VND, from order.paid events"
+          },
+          "ticketsHeld": {
+            "type": "number",
+            "description": "Held right now, not yet paid"
+          }
+        },
+        "required": [
+          "zoneId",
+          "name",
+          "type",
+          "capacity",
+          "ticketsSold",
+          "revenue",
+          "ticketsHeld"
+        ]
+      },
+      "SalesStatsDto": {
+        "type": "object",
+        "properties": {
+          "performanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "capacity": {
+            "type": "number"
+          },
+          "ticketsSold": {
+            "type": "number"
+          },
+          "revenue": {
+            "type": "number",
+            "description": "VND"
+          },
+          "ticketsHeld": {
+            "type": "number"
+          },
+          "queueLength": {
+            "type": "number",
+            "description": "People in the virtual waiting room now"
+          },
+          "zones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ZoneSalesDto"
+            }
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "performanceId",
+          "capacity",
+          "ticketsSold",
+          "revenue",
+          "ticketsHeld",
+          "queueLength",
+          "zones",
+          "generatedAt"
         ]
       }
     }

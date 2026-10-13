@@ -1,7 +1,7 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 import { AppException } from '../../common/errors/app.exception.js';
 import { ErrorCode } from '../../common/errors/error-codes.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { OrderResponseDto } from './dto/order.dto.js';
 
@@ -18,17 +18,31 @@ export interface PaidItem {
   id: string;
   zoneId: string;
   seatId: string | null;
+  price: number;
 }
 
 export interface ReleasedItem {
   zoneId: string;
   seatId: string | null;
+  price: number;
 }
 
-/** An order closed by closePending: its performance and released items. */
-export interface ClosedOrder {
+/** Who and what an order is about: the data of its events (phase 8). */
+export interface OrderHeader {
+  orderId: string;
+  userId: string;
   performanceId: string;
+  totalAmount: number;
+}
+
+/** An order closed by closePending, with its released items. */
+export interface ClosedOrder extends OrderHeader {
   items: ReleasedItem[];
+}
+
+/** A PAID order taken back by unpay, with its released items. */
+export interface UnpaidOrder extends OrderHeader {
+  items: PaidItem[];
 }
 
 export interface NewOrderItem {
@@ -49,6 +63,12 @@ const orderSelect = {
     orderBy: { id: 'asc' },
   },
 } as const;
+
+/** RETURNING list of an OrderHeader (orders.total_amount is an integer, VND). */
+const HEADER = Prisma.sql`
+  id AS "orderId", user_id AS "userId",
+  performance_id AS "performanceId", total_amount AS "totalAmount"
+`;
 
 @Injectable()
 export class OrdersService {
@@ -149,30 +169,29 @@ export class OrdersService {
       // userId: the owner cancels; absent: the system cancels (performance cancelled).
       | { to: 'CANCELLED'; userId?: string },
   ): Promise<ClosedOrder | null> {
-    // RETURNING performance_id: the realtime seat map must know which
-    // performance to refresh.
-    type Row = { performanceId: string };
+    // RETURNING the header: the realtime seat map must know which
+    // performance to refresh, and the order's event needs who and how much.
     const closed =
       close.to === 'EXPIRED'
-        ? await tx.$queryRaw<Row[]>`
+        ? await tx.$queryRaw<OrderHeader[]>`
             UPDATE orders SET status = 'EXPIRED', updated_at = now()
             WHERE id = ${orderId}::uuid
               AND status = 'PENDING'
               AND expires_at + ${close.graceSeconds} * interval '1 second' <= now()
-            RETURNING performance_id AS "performanceId"
+            RETURNING ${HEADER}
           `
         : close.userId
-          ? await tx.$queryRaw<Row[]>`
+          ? await tx.$queryRaw<OrderHeader[]>`
               UPDATE orders SET status = 'CANCELLED', updated_at = now()
               WHERE id = ${orderId}::uuid
                 AND status = 'PENDING'
                 AND user_id = ${close.userId}::uuid
-              RETURNING performance_id AS "performanceId"
+              RETURNING ${HEADER}
             `
-          : await tx.$queryRaw<Row[]>`
+          : await tx.$queryRaw<OrderHeader[]>`
               UPDATE orders SET status = 'CANCELLED', updated_at = now()
               WHERE id = ${orderId}::uuid AND status = 'PENDING'
-              RETURNING performance_id AS "performanceId"
+              RETURNING ${HEADER}
             `;
     if (closed.length === 0) {
       return null;
@@ -181,9 +200,9 @@ export class OrdersService {
     const items = await tx.$queryRaw<ReleasedItem[]>`
       UPDATE order_items SET released_at = now()
       WHERE order_id = ${orderId}::uuid AND released_at IS NULL
-      RETURNING zone_id AS "zoneId", seat_id AS "seatId"
+      RETURNING zone_id AS "zoneId", seat_id AS "seatId", price
     `;
-    return { performanceId: closed[0].performanceId, items };
+    return { ...closed[0], items };
   }
 
   /**
@@ -224,7 +243,7 @@ export class OrdersService {
     `;
     if (changed === 0) return null;
     return tx.$queryRaw<PaidItem[]>`
-      SELECT id, zone_id AS "zoneId", seat_id AS "seatId"
+      SELECT id, zone_id AS "zoneId", seat_id AS "seatId", price
       FROM order_items
       WHERE order_id = ${orderId}::uuid AND released_at IS NULL
     `;
@@ -255,29 +274,32 @@ export class OrdersService {
   async unpay(
     tx: Prisma.TransactionClient,
     orderId: string,
-  ): Promise<PaidItem[] | null> {
-    const changed = await tx.$executeRaw`
+  ): Promise<UnpaidOrder | null> {
+    const changed = await tx.$queryRaw<OrderHeader[]>`
       UPDATE orders SET status = 'REFUND_PENDING', updated_at = now()
       WHERE id = ${orderId}::uuid AND status = 'PAID'
+      RETURNING ${HEADER}
     `;
-    if (changed === 0) return null;
-    return tx.$queryRaw<PaidItem[]>`
+    if (changed.length === 0) return null;
+    const items = await tx.$queryRaw<PaidItem[]>`
       UPDATE order_items SET released_at = now()
       WHERE order_id = ${orderId}::uuid AND released_at IS NULL
-      RETURNING id, zone_id AS "zoneId", seat_id AS "seatId"
+      RETURNING id, zone_id AS "zoneId", seat_id AS "seatId", price
     `;
+    return { ...changed[0], items };
   }
 
   /** REFUND_PENDING -> REFUNDED once the gateway confirmed every refund. */
   async markRefunded(
     tx: Prisma.TransactionClient,
     orderId: string,
-  ): Promise<boolean> {
-    const changed = await tx.$executeRaw`
+  ): Promise<OrderHeader | null> {
+    const changed = await tx.$queryRaw<OrderHeader[]>`
       UPDATE orders SET status = 'REFUNDED', updated_at = now()
       WHERE id = ${orderId}::uuid AND status = 'REFUND_PENDING'
+      RETURNING ${HEADER}
     `;
-    return changed === 1;
+    return changed[0] ?? null;
   }
 
   /** Ids of the order items of one order (to void its tickets). */

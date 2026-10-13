@@ -22,6 +22,15 @@ export class ZonesService {
     );
   }
 
+  /** Held tickets per STANDING zone of a performance (sales dashboard). */
+  async standingHeld(performanceId: string): Promise<Map<string, number>> {
+    const zones = await this.prisma.zone.findMany({
+      where: { performanceId, type: 'STANDING' },
+      select: { id: true, heldCount: true },
+    });
+    return new Map(zones.map((z) => [z.id, z.heldCount]));
+  }
+
   /** Every STANDING zone id (for the reconcile job). */
   async standingZoneIds(): Promise<string[]> {
     const zones = await this.prisma.zone.findMany({

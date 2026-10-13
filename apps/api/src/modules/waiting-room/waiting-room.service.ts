@@ -103,6 +103,11 @@ export class WaitingRoomService {
     }
   }
 
+  /** People waiting in a performance's line (0 without a waiting room). */
+  async lineLength(performanceId: string): Promise<number> {
+    return this.redis.zcard(WaitingRoomKey.line(performanceId));
+  }
+
   /**
    * Worker, every WAITING_ROOM_TICK_MS (BullMQ job admit-batch, one at a
    * time): for every performance with people waiting, admit the next ones

@@ -12,6 +12,8 @@ import {
   type RefundJobData,
 } from '../../queue/queue.constants.js';
 import { OrdersService } from '../orders/orders.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
+import { OrderEventType } from '../outbox/order-events.js';
 import { PaymentProvidersService } from './providers/payment-providers.service.js';
 
 /** A refund older than this without progress is enqueued again by the sweep. */
@@ -35,6 +37,7 @@ export class RefundsService {
     private readonly prisma: PrismaService,
     private readonly orders: OrdersService,
     private readonly providers: PaymentProvidersService,
+    private readonly outbox: OutboxService,
     private readonly config: AppConfigService,
     @InjectQueue(PAYMENTS_QUEUE) private readonly queue: Queue,
     @InjectQueue(PAYMENTS_DEAD_LETTER_QUEUE)
@@ -138,7 +141,18 @@ export class RefundsService {
         },
       });
       if (pending === 0) {
-        await this.orders.markRefunded(tx, payment.orderId);
+        const order = await this.orders.markRefunded(tx, payment.orderId);
+        if (order) {
+          const refunded = await tx.refund.aggregate({
+            _sum: { amount: true },
+            where: { payment: { orderId: payment.orderId } },
+          });
+          await this.outbox.add(tx, OrderEventType.REFUNDED, {
+            ...order,
+            totalAmount: refunded._sum.amount ?? 0,
+            items: [],
+          });
+        }
       }
     });
   }

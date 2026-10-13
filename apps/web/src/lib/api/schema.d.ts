@@ -532,6 +532,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/performances/{id}/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Tickets sold and revenue per zone (from order events), tickets held and
+         *     people in the waiting room right now. Live: WebSocket namespace /sales.
+         */
+        get: operations["SalesController_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -934,6 +954,34 @@ export interface components {
             checkedInAt: string;
             zoneName: string;
             seatLabel: string | null;
+        };
+        ZoneSalesDto: {
+            /** Format: uuid */
+            zoneId: string;
+            name: string;
+            /** @enum {string} */
+            type: "SEATED" | "STANDING";
+            capacity: number;
+            /** @description From order.paid events (analytics consumer) */
+            ticketsSold: number;
+            /** @description VND, from order.paid events */
+            revenue: number;
+            /** @description Held right now, not yet paid */
+            ticketsHeld: number;
+        };
+        SalesStatsDto: {
+            /** Format: uuid */
+            performanceId: string;
+            capacity: number;
+            ticketsSold: number;
+            /** @description VND */
+            revenue: number;
+            ticketsHeld: number;
+            /** @description People in the virtual waiting room now */
+            queueLength: number;
+            zones: components["schemas"]["ZoneSalesDto"][];
+            /** Format: date-time */
+            generatedAt: string;
         };
     };
     responses: never;
@@ -1649,6 +1697,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CheckInResponseDto"];
+                };
+            };
+        };
+    };
+    SalesController_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SalesStatsDto"];
                 };
             };
         };

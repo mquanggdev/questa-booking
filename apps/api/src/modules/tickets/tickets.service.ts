@@ -91,27 +91,17 @@ export class TicketsService {
       orderBy: { issuedAt: 'desc' },
       take: 200,
     });
-    return Promise.all(
-      tickets.map(async (t) => {
-        const item = t.orderItem;
-        const performance = item.order.performance;
-        return {
-          id: t.id,
-          code: t.code,
-          qrSvg: await QRCode.toString(t.code, { type: 'svg', margin: 1 }),
-          orderId: item.orderId,
-          performanceId: performance.id,
-          concertName: performance.concert.name,
-          venue: performance.venue,
-          startsAt: performance.startsAt,
-          zoneName: item.zone.name,
-          seatLabel: seatLabel(item.seat),
-          issuedAt: t.issuedAt,
-          checkedInAt: t.checkedInAt,
-          voidedAt: t.voidedAt,
-        };
-      }),
-    );
+    return Promise.all(tickets.map(toDto));
+  }
+
+  /** The valid (not voided) tickets of one order: the ticket email (phase 8). */
+  async listForOrder(orderId: string): Promise<TicketResponseDto[]> {
+    const tickets = await this.prisma.ticket.findMany({
+      where: { orderItem: { orderId }, voidedAt: null },
+      select: ticketView,
+      orderBy: { id: 'asc' },
+    });
+    return Promise.all(tickets.map(toDto));
   }
 
   /**
@@ -168,4 +158,26 @@ export class TicketsService {
       { checkedInAt: ticket.checkedInAt, checkedInBy: ticket.checkedInBy },
     );
   }
+}
+
+type TicketRow = Prisma.TicketGetPayload<{ select: typeof ticketView }>;
+
+async function toDto(t: TicketRow): Promise<TicketResponseDto> {
+  const item = t.orderItem;
+  const performance = item.order.performance;
+  return {
+    id: t.id,
+    code: t.code,
+    qrSvg: await QRCode.toString(t.code, { type: 'svg', margin: 1 }),
+    orderId: item.orderId,
+    performanceId: performance.id,
+    concertName: performance.concert.name,
+    venue: performance.venue,
+    startsAt: performance.startsAt,
+    zoneName: item.zone.name,
+    seatLabel: seatLabel(item.seat),
+    issuedAt: t.issuedAt,
+    checkedInAt: t.checkedInAt,
+    voidedAt: t.voidedAt,
+  };
 }

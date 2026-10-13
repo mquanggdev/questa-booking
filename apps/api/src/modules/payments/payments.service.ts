@@ -12,6 +12,8 @@ import {
   ReleaseService,
   type ReleasedSet,
 } from '../reservations/release.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
+import { OrderEventType } from '../outbox/order-events.js';
 import { SeatEventsService } from '../seats/seat-events.service.js';
 import { SeatsService } from '../seats/seats.service.js';
 import { TicketsService } from '../tickets/tickets.service.js';
@@ -85,6 +87,7 @@ export class PaymentsService {
     private readonly release: ReleaseService,
     private readonly refunds: RefundsService,
     private readonly seatEvents: SeatEventsService,
+    private readonly outbox: OutboxService,
     private readonly config: AppConfigService,
   ) {}
 
@@ -275,6 +278,19 @@ export class PaymentsService {
           const items = await this.orders.markPaid(tx, order.id, grace);
           if (items) {
             await this.fulfil(tx, items);
+            // I7: exactly one order.paid per PAID order. Same transaction as
+            // PENDING -> PAID, which happens at most once per order.
+            await this.outbox.add(tx, OrderEventType.PAID, {
+              orderId: order.id,
+              userId: order.userId,
+              performanceId: order.performanceId,
+              totalAmount: order.totalAmount,
+              items: items.map(({ zoneId, seatId, price }) => ({
+                zoneId,
+                seatId,
+                price,
+              })),
+            });
             return {
               outcome: 'paid',
               released: null,

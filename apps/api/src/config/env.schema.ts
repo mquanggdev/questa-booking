@@ -70,6 +70,30 @@ export const envSchema = z
       .int()
       .positive()
       .default(600),
+    // Events (phase 8). Only the worker talks to Kafka: the API writes
+    // events to the outbox table, in the same transaction as the change.
+    KAFKA_BROKERS: z.string().min(1).default('localhost:9094'),
+    // Prepended to topic and consumer group names; e2e tests use their own
+    // so they never read or write the development topics.
+    KAFKA_TOPIC_PREFIX: z.string().default(''),
+    // How long a send may wait for Kafka's acknowledgement before failing
+    // (Kafka down). The relay's transaction lasts a little longer.
+    KAFKA_SEND_TIMEOUT_MS: z.coerce.number().int().min(1000).default(10_000),
+    OUTBOX_RELAY_EVERY_MS: z.coerce.number().int().min(50).default(500),
+    OUTBOX_BATCH_SIZE: z.coerce
+      .number()
+      .int()
+      .positive()
+      .max(1000)
+      .default(100),
+    // Attempts per event in a consumer before it goes to the dead letter topic.
+    CONSUMER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+    // Ticket emails. Local: Mailpit (docker compose), inbox at :8025.
+    SMTP_URL: z.url().default('smtp://localhost:1025'),
+    MAIL_FROM: z
+      .string()
+      .min(3)
+      .default('Questa Booking <tickets@questa.test>'),
     // Payments (phase 5). "fake" speaks the VNPay protocol against a local
     // simulated gateway; it is refused in production.
     PAYMENT_PROVIDER: z.enum(['fake', 'vnpay']).default('fake'),
