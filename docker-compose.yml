@@ -44,6 +44,7 @@ x-api-env: &api-env
   OUTBOX_BATCH_SIZE: ${OUTBOX_BATCH_SIZE:-100}
   CONSUMER_MAX_ATTEMPTS: ${CONSUMER_MAX_ATTEMPTS:-5}
   SMTP_URL: smtp://mailpit:1025
+  METRICS_PORT: 9464
   MAIL_FROM: ${MAIL_FROM:-Questa Booking <tickets@questa.test>}
 
 services:
@@ -228,6 +229,44 @@ services:
       retries: 5
     mem_limit: 64m
 
+  # Monitoring (phase 9), with `--profile monitoring`: Prometheus scrapes
+  # the API replicas and the worker; Grafana shows the dashboard
+  # (docker/grafana/dashboards/questa.json) at http://localhost:3300.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ['monitoring']
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    ports:
+      - '${PROMETHEUS_PORT:-9090}:9090'
+    mem_limit: 256m
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: ['monitoring']
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      # Read-only viewing without an account (the dashboard is the demo).
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/questa.json
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - '${GRAFANA_PORT:-3300}:3000'
+    depends_on:
+      - prometheus
+    mem_limit: 256m
+
   # Load generator, only with `--profile loadtest` (see load-tests/run.mjs).
   # Runs inside the compose network and calls the API directly, not through
   # the host port, so Windows/macOS port forwarding does not skew results.
@@ -247,3 +286,5 @@ volumes:
   pgdata:
   redisdata:
   kafkadata:
+  promdata:
+  grafanadata:

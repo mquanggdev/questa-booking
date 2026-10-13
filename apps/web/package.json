@@ -12,7 +12,8 @@
     "api:types": "openapi-typescript ../api/openapi.json -o src/lib/api/schema.d.ts",
     "test:browser": "playwright test",
     "record:demo": "node scripts/record-demo.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "screenshot:dashboard": "node scripts/screenshot-dashboard.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

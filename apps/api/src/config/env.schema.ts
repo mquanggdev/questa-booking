@@ -94,6 +94,9 @@ export const envSchema = z
       .string()
       .min(3)
       .default('Questa Booking <tickets@questa.test>'),
+    // Port of the worker's /metrics (phase 9); the API serves /api/v1/metrics.
+    // 0 = any free port (tests start several workers in one process).
+    METRICS_PORT: z.coerce.number().int().min(0).default(9464),
     // Payments (phase 5). "fake" speaks the VNPay protocol against a local
     // simulated gateway; it is refused in production.
     PAYMENT_PROVIDER: z.enum(['fake', 'vnpay']).default('fake'),

@@ -11,6 +11,7 @@ import {
   parseOrderEvent,
   type OrderEvent,
 } from '../modules/outbox/order-events.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { KafkaService } from './kafka.service.js';
 
@@ -51,6 +52,7 @@ export class EventConsumersService implements OnApplicationBootstrap {
     private readonly kafka: KafkaService,
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
+    private readonly metrics: MetricsService,
     @Inject(ORDER_EVENT_HANDLERS)
     private readonly handlers: OrderEventHandler[],
   ) {}
@@ -112,7 +114,13 @@ export class EventConsumersService implements OnApplicationBootstrap {
               ),
             );
         }
-        return applied ? 'applied' : 'duplicate';
+        if (applied) {
+          this.metrics.consumerLag.observe(
+            { consumer: handler.name },
+            (Date.now() - Date.parse(event.occurredAt)) / 1000,
+          );
+        }
+        return this.count(handler, applied ? 'applied' : 'duplicate');
       } catch (error) {
         lastError = error;
         if (attempt < attempts) {
@@ -127,7 +135,12 @@ export class EventConsumersService implements OnApplicationBootstrap {
       lastError,
       attempts,
     );
-    return 'dead-lettered';
+    return this.count(handler, 'dead-lettered');
+  }
+
+  private count(handler: OrderEventHandler, outcome: Outcome): Outcome {
+    this.metrics.consumerEvents.inc({ consumer: handler.name, outcome });
+    return outcome;
   }
 
   /** True if applied now, false if this consumer had already applied it. */

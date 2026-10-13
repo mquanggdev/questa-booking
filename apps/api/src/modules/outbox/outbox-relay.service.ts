@@ -7,6 +7,7 @@ import {
 import { AppConfigService } from '../../config/app-config.service.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import { KafkaService } from '../../kafka/kafka.service.js';
+import { MetricsService } from '../../metrics/metrics.service.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import {
   ORDER_EVENT_VERSION,
@@ -44,6 +45,7 @@ export class OutboxRelayService
     private readonly prisma: PrismaService,
     private readonly kafka: KafkaService,
     private readonly config: AppConfigService,
+    private readonly metrics: MetricsService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -75,7 +77,7 @@ export class OutboxRelayService
   /** One batch. Returns how many events were published. */
   async publishBatch(): Promise<number> {
     const timeout = this.config.get('KAFKA_SEND_TIMEOUT_MS') + 5000;
-    return this.prisma.$transaction(
+    const published = await this.prisma.$transaction(
       async (tx) => {
         // Oldest unpublished events first, locked until this transaction
         // ends. SKIP LOCKED: a second relay (another worker) takes the next
@@ -109,6 +111,8 @@ export class OutboxRelayService
       },
       { timeout, maxWait: 5000 },
     );
+    this.metrics.outboxPublished.inc(published);
+    return published;
   }
 
   /** Separate so tests can make the relay "die" between send and commit. */

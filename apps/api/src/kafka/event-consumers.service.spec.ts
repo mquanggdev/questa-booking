@@ -1,4 +1,5 @@
 import type { AppConfigService } from '../config/app-config.service.js';
+import { MetricsService } from '../metrics/metrics.service.js';
 import type { OrderEvent } from '../modules/outbox/order-events.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -35,6 +36,7 @@ function setup(inserted: number) {
     kafka as unknown as KafkaService,
     prisma as unknown as PrismaService,
     config,
+    new MetricsService(),
     [],
   );
   return { service, kafka, tx };

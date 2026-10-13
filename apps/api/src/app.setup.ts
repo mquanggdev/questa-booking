@@ -9,6 +9,7 @@ import { hostname } from 'node:os';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { createValidationPipe } from './common/pipes/validation.pipe.js';
 import { AppConfigService } from './config/app-config.service.js';
+import { MetricsService } from './metrics/metrics.service.js';
 
 export const API_PREFIX = 'api/v1';
 
@@ -33,6 +34,28 @@ export function configureApp(app: INestApplication): void {
       next: () => void,
     ) => {
       res.setHeader('X-Instance', INSTANCE_ID);
+      next();
+    },
+  );
+  // Request duration by route template (phase 9). The route is known once
+  // Express has matched it, so it is read when the response finishes.
+  const metrics = app.get(MetricsService);
+  app.use(
+    (
+      req: { method: string; baseUrl?: string; route?: { path: string } },
+      res: { statusCode: number; once(e: 'finish', f: () => void): void },
+      next: () => void,
+    ) => {
+      const stop = metrics.httpDuration.startTimer();
+      res.once('finish', () =>
+        stop({
+          method: req.method,
+          route: req.route
+            ? `${req.baseUrl ?? ''}${req.route.path}`
+            : 'unmatched',
+          status: String(res.statusCode),
+        }),
+      );
       next();
     },
   );

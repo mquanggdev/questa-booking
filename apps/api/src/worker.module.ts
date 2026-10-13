@@ -10,6 +10,8 @@ import { SeatBroadcastService } from './modules/seats/seat-broadcast.service.js'
 import { SeatsModule } from './modules/seats/seats.module.js';
 import { ReservationsProcessor } from './modules/reservations/reservations.processor.js';
 import { KafkaModule } from './kafka/kafka.module.js';
+import { MetricsModule } from './metrics/metrics.module.js';
+import { WorkerMetricsService } from './metrics/worker-metrics.service.js';
 import { WaitingRoomModule } from './modules/waiting-room/waiting-room.module.js';
 import { WaitingRoomProcessor } from './modules/waiting-room/waiting-room.processor.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -41,12 +43,14 @@ import { RedisModule } from './redis/redis.module.js';
     SeatsModule,
     WaitingRoomModule,
     KafkaModule,
+    MetricsModule,
   ],
   providers: [
     ReservationsProcessor,
     PaymentsProcessor,
     SeatBroadcastService,
     WaitingRoomProcessor,
+    WorkerMetricsService,
   ],
 })
 export class WorkerModule {}

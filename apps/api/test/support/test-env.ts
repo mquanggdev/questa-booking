@@ -63,4 +63,6 @@ export const testEnv = {
   OUTBOX_RELAY_EVERY_MS: '200',
   CONSUMER_MAX_ATTEMPTS: '3',
   SMTP_URL: 'smtp://localhost:1025',
+  // Several workers may run in one test process: any free port each.
+  METRICS_PORT: '0',
 } satisfies Record<string, string>;

@@ -13,6 +13,7 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ReservationsModule } from './modules/reservations/reservations.module.js';
 import { SeatsRealtimeModule } from './modules/seats/seats-realtime.module.js';
 import { WaitingRoomRealtimeModule } from './modules/waiting-room/waiting-room-realtime.module.js';
+import { MetricsModule } from './metrics/metrics.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { AnalyticsRealtimeModule } from './modules/analytics/analytics-realtime.module.js';
 import { TicketsModule } from './modules/tickets/tickets.module.js';
@@ -87,6 +88,7 @@ import { REDIS, RedisModule } from './redis/redis.module.js';
     WaitingRoomRealtimeModule,
     AnalyticsModule,
     AnalyticsRealtimeModule,
+    MetricsModule,
   ],
 })
 export class AppModule {}
