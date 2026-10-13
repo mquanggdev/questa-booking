@@ -116,8 +116,10 @@ export class OutboxRelayService
     tx: Prisma.TransactionClient,
     ids: string[],
   ): Promise<void> {
+    // clock_timestamp(), not now(): now() is when this transaction began,
+    // before the send; published_at is when Kafka had acknowledged.
     await tx.$executeRaw`
-      UPDATE outbox_events SET published_at = now()
+      UPDATE outbox_events SET published_at = clock_timestamp()
       WHERE id = ANY(${ids}::uuid[])
     `;
   }
