@@ -3,6 +3,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { CustomerOnlyNotice } from '@/components/customer-only-notice';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -24,7 +25,8 @@ function useCountdown(iso: string | undefined): number | null {
 }
 
 export function OrderView({ orderId }: { orderId: string }) {
-  const { status } = useRequireAuth();
+  const { status, user } = useRequireAuth();
+  const isCustomer = user?.role === 'CUSTOMER';
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -36,7 +38,7 @@ export function OrderView({ orderId }: { orderId: string }) {
       call(
         api.GET('/api/v1/orders/{id}', { params: { path: { id: orderId } } }),
       ),
-    enabled: status === 'authenticated',
+    enabled: status === 'authenticated' && isCustomer,
     // While unpaid, the state can change behind our back (payment IPN,
     // expiry job): keep it fresh.
     refetchInterval: (q) =>
@@ -54,6 +56,7 @@ export function OrderView({ orderId }: { orderId: string }) {
   });
   const secondsLeft = useCountdown(order?.expiresAt);
 
+  if (status === 'authenticated' && !isCustomer) return <CustomerOnlyNotice />;
   if (loadError instanceof ApiError && loadError.status === 404) {
     return <p>Không tìm thấy đơn hàng.</p>;
   }

@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { CustomerOnlyNotice } from '@/components/customer-only-notice';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api, call } from '@/lib/api/client';
@@ -9,17 +10,20 @@ import { formatDateTime } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-require-auth';
 
 export default function TicketsPage() {
-  const { status } = useRequireAuth();
+  const { status, user } = useRequireAuth();
+  const isCustomer = user?.role === 'CUSTOMER';
   const { data: tickets } = useQuery({
     queryKey: ['tickets'],
     queryFn: () => call(api.GET('/api/v1/tickets')),
-    enabled: status === 'authenticated',
+    enabled: status === 'authenticated' && isCustomer,
   });
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Vé của tôi</h1>
-      {!tickets ? (
+      {status === 'authenticated' && !isCustomer ? (
+        <CustomerOnlyNotice />
+      ) : !tickets ? (
         <Skeleton className="h-64" />
       ) : tickets.length === 0 ? (
         <p className="text-muted-foreground">

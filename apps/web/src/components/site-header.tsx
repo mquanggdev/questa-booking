@@ -17,7 +17,8 @@ export function SiteHeader() {
         </Link>
         <nav className="flex gap-4 text-sm text-muted-foreground">
           <Link href="/">Concert</Link>
-          {status === 'authenticated' && (
+          {/* Orders and tickets are a customer's (the API refuses other roles). */}
+          {user?.role === 'CUSTOMER' && (
             <>
               <Link href="/orders">Đơn hàng</Link>
               <Link href="/tickets">Vé của tôi</Link>

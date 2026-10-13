@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { CustomerOnlyNotice } from '@/components/customer-only-notice';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { api, call } from '@/lib/api/client';
@@ -9,17 +10,20 @@ import { ORDER_STATUS_LABEL, formatDateTime, formatVnd } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-require-auth';
 
 export default function OrdersPage() {
-  const { status } = useRequireAuth();
+  const { status, user } = useRequireAuth();
+  const isCustomer = user?.role === 'CUSTOMER';
   const { data: orders } = useQuery({
     queryKey: ['orders'],
     queryFn: () => call(api.GET('/api/v1/orders')),
-    enabled: status === 'authenticated',
+    enabled: status === 'authenticated' && isCustomer,
   });
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold">Đơn hàng của tôi</h1>
-      {!orders ? (
+      {status === 'authenticated' && !isCustomer ? (
+        <CustomerOnlyNotice />
+      ) : !orders ? (
         <Skeleton className="h-40" />
       ) : orders.length === 0 ? (
         <p className="text-muted-foreground">
