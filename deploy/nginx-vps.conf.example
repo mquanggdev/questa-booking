@@ -1,0 +1,80 @@
+# Server blocks for the VPS's Nginx (the one owned by the e-commerce project,
+# which holds ports 80/443 and the Let's Encrypt certificates). This file is
+# added to THAT project's repository, never edited by hand on the server:
+# its CI copies the Nginx config on every deploy (ADR-0014).
+#
+# Replace booking.example.com and grafana.example.com with the real names.
+#
+# Three ways this file could stop Nginx from starting, and so take the
+# e-commerce site down with it, and how each is avoided:
+#   1. Container names that do not resolve yet (Booking not deployed, or
+#      restarting): the upstream is a variable resolved at request time by
+#      Docker's DNS (127.0.0.11), never at startup.
+#   2. A certificate that does not exist yet: the 443 blocks go in only
+#      after certbot issued it (step 2 of docs/deploy-vps.md); until then,
+#      only the port 80 block below exists.
+#   3. A network that does not exist: the Nginx container must be attached
+#      to ${EDGE_NETWORK}; deploy/deploy.sh creates the network if missing,
+#      and the e-commerce compose file declares it as external.
+
+resolver 127.0.0.11 valid=30s ipv6=off;
+
+# --- step 1: port 80 only (ACME challenge + redirect) ----------------------
+server {
+    listen 80;
+    server_name booking.example.com grafana.example.com;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# --- step 2: after `certbot certonly --webroot` issued the certificate -----
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name booking.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/booking.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/booking.example.com/privkey.pem;
+
+    client_max_body_size 1m;
+
+    location / {
+        set $booking http://questa-booking-nginx;
+        proxy_pass $booking;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        # WebSocket (seat map, waiting room, sales dashboard).
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $http_connection;
+        proxy_read_timeout 1h;
+    }
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name grafana.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/grafana.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/grafana.example.com/privkey.pem;
+
+    location / {
+        set $grafana http://questa-booking-grafana:3000;
+        proxy_pass $grafana;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        # Grafana Live (dashboard refresh over WebSocket).
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $http_connection;
+    }
+}
