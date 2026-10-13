@@ -132,9 +132,7 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-      target: build
-    working_dir: /repo/apps/api
-    command: ['pnpm', 'exec', 'prisma', 'migrate', 'deploy']
+      target: migrate
     environment: *api-env
     depends_on:
       postgres:
