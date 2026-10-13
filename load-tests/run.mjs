@@ -7,6 +7,7 @@
 //   pnpm loadtest webhook-chaos | full-flow | check-in   (phase 5, fake gateway)
 //   pnpm loadtest contention --record "phase 2 naive"   (appends to docs/benchmarks.md)
 //   pnpm loadtest contention --kill-after 5               (kills one API replica 5 s in)
+//   pnpm loadtest full-flow --kill-after 10 --kill-service worker   (phase 8: the relay and consumers die)
 //   pnpm loadtest on-sale [--queue off] [--lead 20]      (phase 7b, waiting room)
 //
 // Steps: reset the target performance (write scenarios) -> k6 in Docker ->
@@ -146,10 +147,11 @@ function record(row, opts) {
     doubleSold = `**${z.oversold}** vé vượt sức chứa (${z.ticketsIssued}/${z.capacity}), lệch bộ đếm ${z.lostUpdates}`;
   } else if (PAYMENT_SCENARIOS.has(row.scenario)) {
     const v = row.verify;
-    const total = v.i2Violations + v.i4Violations + v.i8Violations + v.i12Violations + v.i9Violations + (v.i6Violations ?? 0);
+    const total = v.i2Violations + v.i4Violations + v.i8Violations + v.i12Violations + v.i9Violations + (v.i6Violations ?? 0)
+      + v.i7Violations + v.auditMismatch + v.statsMismatch;
     doubleSold = row.scenario === 'check-in'
       ? `**${v.i6Violations}** vé check-in quá 1 lần (${v.ticketsCheckedIn} vé, ${row.counters.checkins_accepted} lượt nhận)`
-      : `**${total}** vi phạm I2/I4/I8/I9/I12 (${v.orders.PAID ?? 0} đơn PAID, ${(v.orders.REFUND_PENDING ?? 0) + (v.orders.REFUNDED ?? 0)} đơn hoàn tiền)`;
+      : `**${total}** vi phạm I2/I4/I7/I8/I9/I12 (${v.orders.PAID ?? 0} đơn PAID, ${(v.orders.REFUND_PENDING ?? 0) + (v.orders.REFUNDED ?? 0)} đơn hoàn tiền; sự kiện xử lý xong sau ${(v.eventsDrainMs / 1000).toFixed(0)} s)`;
   } else if (row.scenario === 'on-sale') {
     const v = row.verify;
     const z = v.standing[0];
@@ -206,7 +208,24 @@ function resetGate() {
   );
 }
 
+/**
+ * Phase 8: waits until every event of this performance is published and
+ * applied by the three consumers, so the I7 check sees the final state and
+ * no event of an earlier run lands after the reset.
+ */
+async function waitForEvents(timeoutMs) {
+  const started = Date.now();
+  let pending = Number(psql('sql/events-pending.sql', perf));
+  while (pending > 0 && Date.now() - started < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 1000));
+    pending = Number(psql('sql/events-pending.sql', perf));
+  }
+  return { pending, waitedMs: Date.now() - started };
+}
+
 if (WRITE_SCENARIOS.has(opts.scenario)) {
+  const leftover = await waitForEvents(60_000);
+  if (leftover.pending > 0) console.warn(`${leftover.pending} event step(s) of an earlier run still pending; resetting anyway`);
   console.log(`Resetting performance ${perf} (PostgreSQL and Redis gate)…`);
   psql('sql/reset-performance.sql', perf);
   resetGate();
@@ -279,7 +298,10 @@ if (opts['kill-after'] === undefined) {
 } else {
   // Phase 7a: a replica dies mid-run, like a crash (SIGKILL, no graceful
   // shutdown). Nginx must route around it and no invariant may break.
-  const victim = sh(['docker', 'compose', 'ps', '-q', 'api'], { quiet: true }).trim().split(String.fromCharCode(10)).pop().trim();
+  // Phase 8: --kill-service worker kills the outbox relay and the Kafka
+  // consumers mid-run instead; the events must still be applied once (I7).
+  const service = opts['kill-service'] ?? 'api';
+  const victim = sh(['docker', 'compose', 'ps', '-q', service], { quiet: true }).trim().split(String.fromCharCode(10)).pop().trim();
   const k6 = spawn('docker', k6Args, { cwd: repo, stdio: 'inherit' });
   const timer = setTimeout(() => {
     killed = sh(['docker', 'inspect', '-f', '{{.Name}}', victim], { quiet: true }).trim().replace(/^\//, '');
@@ -307,6 +329,10 @@ let verify = WRITE_SCENARIOS.has(opts.scenario)
   : null;
 if (PAYMENT_SCENARIOS.has(opts.scenario)) {
   verify = { ...verify, ...JSON.parse(psql('verify/payments.sql', perf)) };
+  // I7 (phase 8): once the outbox drained and the consumers caught up.
+  const drained = await waitForEvents(120_000);
+  console.log(`Events drained in ${(drained.waitedMs / 1000).toFixed(1)} s (${drained.pending} step(s) still pending)`);
+  verify = { ...verify, ...JSON.parse(psql('verify/events.sql', perf)), eventsDrainMs: drained.waitedMs };
   if (opts.scenario === 'check-in') {
     // I6: every accepted scan is one checked-in ticket, and no ticket twice.
     const accepted = summary.metrics.checkins_accepted?.values?.count ?? 0;
