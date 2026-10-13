@@ -55,4 +55,12 @@ export const testEnv = {
   // Off by default: many tests fire bursts from 127.0.0.1 on purpose
   // (quota, IPN duplicates). rate-limit.e2e-spec.ts turns it on.
   RATE_LIMIT_ENABLED: 'false',
+  // Phase 8: the compose Kafka and Mailpit, seen from the host, with topics
+  // and consumer groups of their own (never the development ones).
+  KAFKA_BROKERS: 'localhost:9094',
+  KAFKA_TOPIC_PREFIX: 'e2e.',
+  KAFKA_SEND_TIMEOUT_MS: '4000',
+  OUTBOX_RELAY_EVERY_MS: '200',
+  CONSUMER_MAX_ATTEMPTS: '3',
+  SMTP_URL: 'smtp://localhost:1025',
 } satisfies Record<string, string>;

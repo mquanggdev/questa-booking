@@ -1,5 +1,5 @@
-import type { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import type { INestApplication, INestApplicationContext } from '@nestjs/common';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import * as argon2 from 'argon2';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -11,6 +11,7 @@ import type { Env } from '../../src/config/env.schema.js';
 import { RedisIoAdapter } from '../../src/redis/redis-io.adapter.js';
 import { Role } from '../../src/generated/prisma/client.js';
 import { PrismaService } from '../../src/prisma/prisma.service.js';
+import { WorkerModule } from '../../src/worker.module.js';
 import { Redis } from 'ioredis';
 
 // Points at the test Redis database (REDIS_URL from vitest.config.e2e.ts).
@@ -37,19 +38,7 @@ export async function createTestApp(
   } = {},
 ): Promise<TestApp> {
   const builder = Test.createTestingModule({ imports: [AppModule] });
-  if (options.config) {
-    const overrides = options.config;
-    builder.overrideProvider(AppConfigService).useFactory({
-      inject: [ConfigService],
-      factory: (config: ConfigService<Env, true>) => {
-        const real = new AppConfigService(config);
-        return {
-          get: <K extends keyof Env>(key: K): Env[K] =>
-            key in overrides ? (overrides[key] as Env[K]) : real.get(key),
-        };
-      },
-    });
-  }
+  if (options.config) overrideConfig(builder, options.config);
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication<INestApplication<App>>({
     logger: false,
@@ -72,12 +61,49 @@ export async function createTestApp(
   };
 }
 
+/** Replaces some configuration values for one test app or worker. */
+function overrideConfig(
+  builder: TestingModuleBuilder,
+  overrides: Partial<Env>,
+) {
+  builder.overrideProvider(AppConfigService).useFactory({
+    inject: [ConfigService],
+    factory: (config: ConfigService<Env, true>) => {
+      const real = new AppConfigService(config);
+      return {
+        get: <K extends keyof Env>(key: K): Env[K] =>
+          key in overrides ? (overrides[key] as Env[K]) : real.get(key),
+      };
+    },
+  });
+}
+
+/**
+ * The worker process (WorkerModule), started like worker.ts does, with
+ * optional configuration overrides (e.g. a Kafka topic prefix of its own).
+ */
+export async function createTestWorker(
+  config: Partial<Env> = {},
+): Promise<INestApplicationContext> {
+  const builder = Test.createTestingModule({ imports: [WorkerModule] });
+  overrideConfig(builder, config);
+  const moduleRef = await builder.compile();
+  const worker = moduleRef.createNestApplication({ logger: false });
+  await worker.init();
+  return worker;
+}
+
 /**
  * Empties every application table (migrations history is kept) and the test
  * Redis database (gate keys, queued jobs), so tests never see each other's state.
  */
-export async function resetDatabase(prisma: PrismaService): Promise<void> {
-  await testRedis.flushdb();
+export async function resetDatabase(
+  prisma: PrismaService,
+  options: { redis?: boolean } = {},
+): Promise<void> {
+  // redis: false keeps Redis, for a worker that lives across tests: wiping
+  // it under a running worker breaks its BullMQ schedules.
+  if (options.redis !== false) await testRedis.flushdb();
   const rows = await prisma.$queryRaw<{ tablename: string }[]>`
     SELECT tablename FROM pg_tables
     WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'

@@ -6,6 +6,8 @@ import type { AddressInfo } from 'node:net';
 import { io, type Socket } from 'socket.io-client';
 import { Role } from '../src/generated/prisma/client.js';
 import type { SeatsBatch } from '../src/modules/seats/seats-realtime.constants.js';
+import { EventConsumersService } from '../src/kafka/event-consumers.service.js';
+import { OutboxRelayService } from '../src/modules/outbox/outbox-relay.service.js';
 import { WorkerModule } from '../src/worker.module.js';
 import {
   createTestApp,
@@ -115,9 +117,15 @@ describe('Realtime seat map (e2e)', () => {
     // The worker publishes the batches (every SEAT_BROADCAST_EVERY_MS).
     // Started after the reset: wiping Redis under a running worker breaks
     // its BullMQ schedules.
+    // Kafka (phase 8) plays no part here: no relay, no consumers.
     const moduleRef = await Test.createTestingModule({
       imports: [WorkerModule],
-    }).compile();
+    })
+      .overrideProvider(OutboxRelayService)
+      .useValue({})
+      .overrideProvider(EventConsumersService)
+      .useValue({})
+      .compile();
     worker = moduleRef.createNestApplication({ logger: false });
     await worker.init();
     const organizer = await createUserAndLogin(t, Role.ORGANIZER);
