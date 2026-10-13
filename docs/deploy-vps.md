@@ -24,24 +24,28 @@ Tạo hai bản ghi DNS `A` trỏ về IP của VPS, ví dụ `booking.<tên mi�
 
 ### 3. Thư mục và file `.env` trên VPS
 
-```bash
-mkdir -p ~/questa-booking
-nano ~/questa-booking/.env
-```
+Workflow SSH vào bằng user dùng cho deploy (ví dụ `deploy`, thuộc nhóm `docker`) và làm việc trong `~/questa-booking` **của user đó**. Vì vậy phải tạo dưới user đó, không phải root (`su - deploy` nếu đang là root).
 
-Nội dung (tự sinh từng secret, ví dụ `openssl rand -hex 32`; file này không bao giờ vào git):
+Lệnh dưới sinh mọi secret ngay trên VPS và ghi thẳng vào file, không hiện ra màn hình; file chỉ chủ sở hữu đọc được và không bao giờ vào git:
 
 ```bash
-POSTGRES_PASSWORD=...
-JWT_ACCESS_SECRET=...            # ít nhất 32 ký tự
-FAKE_PAYMENT_SECRET=...
-GRAFANA_ADMIN_PASSWORD=...
+mkdir -p ~/questa-booking && cd ~/questa-booking
+umask 077
+cat > .env <<EOF
+POSTGRES_PASSWORD=$(openssl rand -hex 32)
+JWT_ACCESS_SECRET=$(openssl rand -hex 32)
+FAKE_PAYMENT_SECRET=$(openssl rand -hex 32)
+GRAFANA_ADMIN_PASSWORD=$(openssl rand -hex 24)
 DEMO_ORGANIZER_EMAIL=demo@questa.test
-DEMO_ORGANIZER_PASSWORD=...      # sẽ ghi công khai trong README: tài khoản chỉ xem
+DEMO_ORGANIZER_PASSWORD=demo-$(openssl rand -hex 4)
 PUBLIC_BASE_URL=https://booking.<tên miền>
 GRAFANA_ROOT_URL=https://grafana.<tên miền>
 EDGE_NETWORK=edge
+EOF
+cut -d= -f1 .env    # chỉ in tên biến để kiểm tra
 ```
+
+`DEMO_ORGANIZER_PASSWORD` được ghi công khai trong README, vì tài khoản đó chỉ xem được.
 
 ### 4. GitHub
 
@@ -53,10 +57,12 @@ Trong repo, vào **Settings → Environments**, tạo environment `production` (
 | Secret | `VPS_USER` | user SSH dùng để deploy (thuộc nhóm `docker`) |
 | Secret | `VPS_PORT` | cổng SSH, bỏ trống nếu là 22 |
 | Secret | `VPS_SSH_KEY` | private key **riêng cho deploy** (ed25519); public key của nó đặt trong `~/.ssh/authorized_keys` trên VPS |
-| Secret | `VPS_KNOWN_HOSTS` | kết quả của `ssh-keyscan -p <cổng> <host>`, để CI kiểm tra đúng là VPS của mình |
+| Secret | `VPS_KNOWN_HOSTS` | kết quả của `ssh-keyscan -p <cổng> <host>`, để CI kiểm tra đúng là VPS của mình. **Chạy lệnh này trên chính VPS**: bản `ssh-keyscan` đi kèm Windows không thương lượng được thuật toán trao đổi khóa với OpenSSH 8.9 của Ubuntu (`choose_kex: unsupported KEX method`) và không in ra khóa nào |
 | Variable | `PUBLIC_URL` | `https://booking.<tên miền>` (bước kiểm tra cuối của workflow) |
 
-Sau lần đẩy image đầu tiên, vào **Packages** trên GitHub, chuyển ba package `questa-booking-*` sang **Public**. GHCR mặc định tạo package ở chế độ riêng tư, và khi đó VPS không kéo được image nếu không đăng nhập.
+Khóa SSH cho CI: tạo một cặp khóa riêng, ví dụ `ssh-keygen -t ed25519 -C github-actions-questa-booking -f ~/.ssh/questa_booking_deploy`, để trống passphrase. Dòng `SHA256:...` mà `ssh-keygen` in ra chỉ là dấu vân tay; thứ cần thêm vào `authorized_keys` là **nội dung file `.pub`** (một dòng bắt đầu bằng `ssh-ed25519`). Kiểm tra bằng `ssh-keygen -lf ~/.ssh/authorized_keys` trên VPS.
+
+GHCR mặc định tạo package ở chế độ riêng tư, nên **lần chạy workflow đầu tiên dừng ở bước kéo image** (`deploy.sh` dừng trước khi khởi động gì cả). Khi đó vào **Packages** trên GitHub, chuyển ba package `questa-booking-*` sang **Public**, rồi **Re-run failed jobs**.
 
 ### 5. Deploy lần đầu và dữ liệu demo
 
@@ -65,13 +71,15 @@ Sau lần đẩy image đầu tiên, vào **Packages** trên GitHub, chuyển ba
 
    ```bash
    cd ~/questa-booking
-   IMAGE_TAG=$(cat .deployed-tag) docker compose -f docker-compose.prod.yml run --rm api node dist/scripts/demo-seed.js
+   IMAGE_TAG=$(cat .deployed-tag) docker compose -f docker-compose.prod.yml run --rm api node dist/scripts/demo-seed.js | tee presale-codes.txt
    ```
 
-   Seed in ra 100 mã ưu tiên của đêm "Questa Fan Club Night", mỗi mã dùng một lần.
+   Seed in ra 100 mã ưu tiên của đêm "Questa Fan Club Night", mỗi mã dùng một lần, và `tee` lưu chúng vào `presale-codes.txt`.
+3. Kiểm tra bằng tài khoản demo: header có nhãn "Demo · chỉ xem", trang "Theo dõi mở bán" của từng đêm diễn có số liệu, và `POST /api/v1/concerts` trong Swagger trả `403 DEMO_READ_ONLY`.
 
 ## Những điều nên biết
 
 - **Migration không bao giờ được quay ngược.** Khi `deploy.sh` quay về bản cũ, DB vẫn giữ schema mới. Vì vậy mỗi migration phải tương thích với code của bản trước: thêm cột hoặc bảng trước, rồi mới xóa cái cũ ở một bản sau (expand rồi contract).
 - **Email của bản demo** được Mailpit giữ lại và không công khai, để địa chỉ email của người dùng thử không bị lộ.
 - **Kafka** giới hạn heap 256 MB và giữ log 7 ngày.
+- **Console của trình duyệt** có thể hiện lỗi 401 của `POST /api/v1/auth/refresh` khi chưa đăng nhập (web thử khôi phục phiên từ cookie), và cảnh báo "WebSocket is closed before the connection is established" khi rời một trang đêm diễn lúc kết nối realtime còn đang bắt tay. Cả hai đều bình thường.

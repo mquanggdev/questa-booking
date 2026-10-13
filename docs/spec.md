@@ -667,6 +667,8 @@ Hoàn thành khi: test chứng minh I7 trong ba tình huống: relay bị tắt 
 - CI build image, đẩy lên GitHub Container Registry, deploy qua SSH, HTTPS bằng Let's Encrypt.
 - README hoàn chỉnh.
 
+Thiết kế: [ADR-0018](adr/0018-monitoring-and-deploy.md).
+
 Hoàn thành khi: bản demo online chạy đầy đủ, README có sơ đồ kiến trúc, bảng benchmark và ảnh dashboard.
 
 ## 11. Triển khai và README
@@ -700,5 +702,5 @@ README có hai bản: `README.md` (tiếng Anh) và `README.vi.md` (tiếng Vi�
 | Điểm | Hiện tại | Cần chốt trước giai đoạn |
 | --- | --- | --- |
 | Code VNPay | Chủ dự án cung cấp từ dự án ecommerce | 5 |
-| Dịch vụ gửi email production | Chưa chọn; ở local dùng Mailpit | 8 |
-| Hạ tầng cho bản online | Đã chốt: toàn bộ stack trên một VPS 3 vCPU / 3,5 GB RAM / 60 GB, dùng chung với một dự án khác của tác giả, đứng sau Nginx của dự án đó ([ADR-0014](adr/0014-defer-online-deploy.md)). Deploy ở giai đoạn 9 | 9 |
+| Dịch vụ gửi email production | Đã chốt cho bản demo: Mailpit giữ lại mọi email trên server, không gửi ra ngoài, để không lộ địa chỉ của người dùng thử ([ADR-0018](adr/0018-monitoring-and-deploy.md)). Dịch vụ thật nằm ngoài phạm vi | 9 |
+| Hạ tầng cho bản online | Đã chốt: toàn bộ stack trên một VPS 3 vCPU / 3,5 GB RAM / 60 GB, dùng chung với một dự án khác của tác giả, đứng sau Nginx của dự án đó ([ADR-0014](adr/0014-defer-online-deploy.md)). Đã deploy ở giai đoạn 9: <https://booking.quangtm.site> ([ADR-0018](adr/0018-monitoring-and-deploy.md)) | 9 |

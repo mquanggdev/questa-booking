@@ -18,7 +18,7 @@ Nguồn quyết định: [`docs/spec.md`](docs/spec.md). Khi đặc tả thiếu
 
 ## Quy trình
 
-1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **8**.
+1. Làm tuần tự theo giai đoạn ở mục 10 của đặc tả, không nhảy cóc. Giai đoạn hiện tại: **9** (giai đoạn cuối).
 2. Cuối mỗi giai đoạn: kiểm tra "Định nghĩa hoàn thành" ở mục 10 của đặc tả, rồi **dừng lại báo cáo** cho chủ dự án. Chủ dự án review xong mới gắn tag git.
 3. Giai đoạn 2 cố ý chứa lỗi bán trùng (tag `v0-naive`). Từ giai đoạn 3, mọi kịch bản load test phải cho 0 vi phạm bất biến.
 
@@ -44,6 +44,8 @@ apps/
   web/                    # Next.js (từ giai đoạn 6)
 load-tests/               # kịch bản k6 và script kiểm tra bất biến
 docker/                   # cấu hình nginx, prometheus, grafana (khi cần)
+deploy/                   # deploy.sh và mẫu cấu hình Nginx của VPS (bản online)
+docker-compose.prod.yml   # stack của bản online (image từ GHCR)
 docs/
   spec.md                 # đặc tả
   benchmarks.md
@@ -103,6 +105,7 @@ Chạy từ thư mục gốc repo:
 | `pnpm loadtest <contention\|standing\|quota\|browse\|full-flow\|webhook-chaos\|check-in\|on-sale>` | Load test qua k6 trong Docker, kiểm tra bất biến; `--record "ghi chú" --phase N` để thêm dòng vào `docs/benchmarks.md`; `--kill-after N` giết một instance API sau N giây (`--kill-service worker` để giết worker). Cần `RATE_LIMIT_ENABLED=false docker compose up -d api` trước khi đo |
 | `pnpm test:browser` | Test Playwright luồng mua vé (cần stack đang chạy, đã seed, và `RATE_LIMIT_ENABLED=false docker compose up -d api`) |
 | `pnpm --filter @questa/api openapi:export` rồi `pnpm --filter @questa/web api:types` | Sinh lại `openapi.json` và kiểu dữ liệu của web sau khi đổi API |
+| `docker compose --profile monitoring up -d` | Thêm Prometheus (http://localhost:9090) và Grafana (http://localhost:3300) |
 | `pnpm showcase` | Trang demo tại http://localhost:4100 (cần API đang chạy) |
 | `pnpm showcase:video <slides.html>` | Dựng video tiếng Việt từ slide (qua `uv`, không cài gì lên hệ thống) |
 | `pnpm --filter @questa/api db:seed` | Xóa sạch DB dev rồi nạp dữ liệu mẫu, ghi token cho k6 vào `load-tests/data/` |
@@ -115,6 +118,9 @@ Cổng trên máy chủ dự án:
 - Từ giai đoạn 7a, Nginx giữ cả `WEB_PORT` lẫn `API_PORT`; các instance API không mở cổng trực tiếp.
 - Kafka: `9094` (máy host); trong mạng Docker là `kafka:9092`.
 - Mailpit: hộp thư `8025`, SMTP `1025`.
+- Prometheus `9090`, Grafana `3300` (profile `monitoring`).
+
+Bản online: https://booking.quangtm.site, deploy bằng workflow `Deploy` (tag `v*` hoặc bấm tay) theo [`docs/deploy-vps.md`](docs/deploy-vps.md). Push, deploy và gắn tag cần chủ dự án duyệt.
 
 ## Skill
 

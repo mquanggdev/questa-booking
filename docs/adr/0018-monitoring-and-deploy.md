@@ -85,6 +85,24 @@ Dashboard đã cho thấy một điều benchmark tổng không thấy: lúc t�
 - Bản demo thanh toán qua cổng giả lập (`ALLOW_FAKE_PAYMENTS=true`), nên không có tiền thật đi đâu cả.
 - Email được Mailpit giữ lại và không công khai, để địa chỉ email của người dùng thử không bị lộ.
 
+### 5. Trang web khi người xem là ban tổ chức
+
+Tài khoản demo làm lộ ra một lỗi có từ giai đoạn 6: trang web gọi API chỉ dành cho khách mua vé (`/orders`, `/tickets`, `/queue/me`, `/presale/me`) cả khi người xem là ban tổ chức. API trả 403 đúng như đặc tả, còn trang thì hiện khung chờ mãi. Đặc tả không quy định trang mua vé hiển thị gì cho ban tổ chức, nên quyết định như sau (chủ dự án đồng ý):
+
+- link "Đơn hàng" và "Vé của tôi" chỉ hiện với khách mua vé; mở thẳng URL thì trang nói rõ nó dành cho ai;
+- ban tổ chức thấy sơ đồ ghế của mọi đêm diễn ở chế độ chỉ xem, kể cả đêm có hàng chờ ảo (ban tổ chức không xếp hàng; số người chờ có ở trang theo dõi mở bán);
+- ô nhập mã ưu tiên và nút giữ vé được thay bằng một dòng giải thích.
+
+Hàng chờ và việc giữ vé vẫn do API thực thi; giao diện chỉ thôi gọi những API chắc chắn bị từ chối.
+
+### 6. Lần deploy thật đầu tiên
+
+Chạy theo [docs/deploy-vps.md](../deploy-vps.md), mọi bước của repo này chạy đúng ngay lần đầu, kể cả việc tự quay về bản cũ đã tập dượt. Những gì đáng ghi lại nằm ở phía server và GitHub, và đã được bổ sung vào hướng dẫn:
+
+- lần chạy workflow đầu tiên dừng ở bước kéo image, vì GHCR tạo package ở chế độ riêng tư; `deploy.sh` dừng trước khi khởi động gì cả, nên chỉ cần chuyển package sang Public rồi chạy lại job lỗi;
+- `ssh-keyscan` đi kèm Windows không thương lượng được thuật toán trao đổi khóa với OpenSSH 8.9, nên `VPS_KNOWN_HOSTS` được lấy ngay trên VPS;
+- thư mục deploy nằm trong home của user SSH dùng cho CI (`deploy`), không phải của root.
+
 ## Phương án đã loại
 
 - **`@willsoto/nestjs-prometheus`.** Thêm một lớp bọc chỉ để làm việc `prom-client` vốn đã làm; worker vẫn cần server riêng.
@@ -98,4 +116,5 @@ Dashboard đã cho thấy một điều benchmark tổng không thấy: lúc t�
 
 - Prometheus giữ dữ liệu 7 ngày. Grafana công khai ở chế độ chỉ xem (chủ dự án đồng ý).
 - Mỗi migration phải tương thích với code của bản trước (expand rồi contract), vì việc quay về bản cũ không đảo ngược schema.
+- Bản online chạy ở <https://booking.quangtm.site>, Grafana ở <https://grafana.quangtm.site>.
 - Deploy cần chủ dự án làm một lần các bước ngoài repo: DNS, Nginx và chứng chỉ trong repo dự án kia, `.env` trên VPS, secret của GitHub, chuyển package sang Public. Chi tiết trong [docs/deploy-vps.md](../deploy-vps.md).
