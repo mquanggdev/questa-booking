@@ -43,6 +43,7 @@ describe('Auth (e2e)', () => {
         email: 'jane@example.com',
         fullName: 'Jane',
         role: 'CUSTOMER',
+        isDemo: false,
       });
       const stored = await t.prisma.user.findUniqueOrThrow({
         where: { email: 'jane@example.com' },

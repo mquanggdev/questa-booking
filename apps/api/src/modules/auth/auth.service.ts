@@ -98,7 +98,11 @@ export class AuthService {
     user: User,
     refresh: IssuedRefreshToken,
   ): Promise<Session> {
-    const payload: AccessTokenPayload = { sub: user.id, role: user.role };
+    const payload: AccessTokenPayload = {
+      sub: user.id,
+      role: user.role,
+      ...(user.isDemo ? { demo: true as const } : {}),
+    };
     const expiresIn = this.config.get('JWT_ACCESS_TTL_SECONDS');
     const accessToken = await this.jwt.signAsync(payload, { expiresIn });
     return { accessToken, expiresIn, user: toPublicUser(user), refresh };

@@ -1228,13 +1228,18 @@
               "STAFF"
             ],
             "type": "string"
+          },
+          "isDemo": {
+            "type": "boolean",
+            "description": "The read-only demo account of the online demo: can read, cannot change anything"
           }
         },
         "required": [
           "id",
           "email",
           "fullName",
-          "role"
+          "role",
+          "isDemo"
         ]
       },
       "LoginDto": {

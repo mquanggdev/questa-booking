@@ -19,6 +19,8 @@ import {
 export interface AccessTokenPayload {
   sub: string;
   role: Role;
+  /** Present (true) only for the read-only demo account. */
+  demo?: true;
 }
 
 @Injectable()
@@ -73,7 +75,11 @@ export class JwtAuthGuard implements CanActivate {
       if (!Object.values(Role).includes(payload.role)) {
         return null;
       }
-      return { id: payload.sub, role: payload.role };
+      return {
+        id: payload.sub,
+        role: payload.role,
+        ...(payload.demo ? { demo: true } : {}),
+      };
     } catch {
       return null;
     }

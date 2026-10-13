@@ -94,6 +94,10 @@ export const envSchema = z
       .string()
       .min(3)
       .default('Questa Booking <tickets@questa.test>'),
+    // Online demo (phase 9): the public, read-only organizer account that
+    // `node dist/scripts/demo-seed.js` creates. Its password is published.
+    DEMO_ORGANIZER_EMAIL: z.email().default('demo@questa.test'),
+    DEMO_ORGANIZER_PASSWORD: z.string().min(8).optional(),
     // Port of the worker's /metrics (phase 9); the API serves /api/v1/metrics.
     // 0 = any free port (tests start several workers in one process).
     METRICS_PORT: z.coerce.number().int().min(0).default(9464),

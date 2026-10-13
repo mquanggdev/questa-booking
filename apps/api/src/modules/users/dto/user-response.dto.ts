@@ -13,4 +13,10 @@ export class UserResponseDto {
 
   @ApiProperty({ enum: Role })
   role: Role;
+
+  @ApiProperty({
+    description:
+      'The read-only demo account of the online demo: can read, cannot change anything',
+  })
+  isDemo: boolean;
 }

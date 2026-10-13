@@ -28,6 +28,9 @@ model User {
   passwordHash String   @map("password_hash")
   fullName     String   @map("full_name")
   role         Role     @default(CUSTOMER)
+  // Phase 9: the public demo organizer of the online demo. Signs in and
+  // reads everything an organizer reads, but cannot change anything.
+  isDemo       Boolean  @default(false) @map("is_demo")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

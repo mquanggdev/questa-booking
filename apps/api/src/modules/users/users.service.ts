@@ -7,6 +7,7 @@ export interface PublicUser {
   email: string;
   fullName: string;
   role: Role;
+  isDemo: boolean;
 }
 
 export function toPublicUser(user: User): PublicUser {
@@ -15,6 +16,7 @@ export function toPublicUser(user: User): PublicUser {
     email: user.email,
     fullName: user.fullName,
     role: user.role,
+    isDemo: user.isDemo,
   };
 }
 

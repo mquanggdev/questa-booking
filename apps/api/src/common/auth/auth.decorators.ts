@@ -9,6 +9,8 @@ import type { Role } from '../../generated/prisma/client.js';
 export interface AuthUser {
   id: string;
   role: Role;
+  /** The read-only demo account of the online demo (phase 9). */
+  demo?: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {

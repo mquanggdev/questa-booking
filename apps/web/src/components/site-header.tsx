@@ -30,6 +30,14 @@ export function SiteHeader() {
               <span className="hidden text-muted-foreground sm:inline">
                 {user.fullName}
               </span>
+              {user.isDemo && (
+                <span
+                  className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground"
+                  title="Tài khoản ban tổ chức dùng chung của bản demo: xem được mọi trang, không thay đổi được gì"
+                >
+                  Demo · chỉ xem
+                </span>
+              )}
               <Button
                 variant="outline"
                 size="sm"

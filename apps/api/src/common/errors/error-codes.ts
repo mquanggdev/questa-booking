@@ -41,6 +41,7 @@ export const ErrorCode = {
   PRESALE_CLOSED: 'PRESALE_CLOSED',
   WAITING_ROOM_DISABLED: 'WAITING_ROOM_DISABLED',
   QUEUE_PASS_REQUIRED: 'QUEUE_PASS_REQUIRED',
+  DEMO_READ_ONLY: 'DEMO_READ_ONLY',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

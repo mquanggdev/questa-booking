@@ -575,6 +575,8 @@ export interface components {
             fullName: string;
             /** @enum {string} */
             role: "CUSTOMER" | "ORGANIZER" | "STAFF";
+            /** @description The read-only demo account of the online demo: can read, cannot change anything */
+            isDemo: boolean;
         };
         LoginDto: {
             /**
