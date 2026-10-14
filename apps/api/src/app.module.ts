@@ -50,31 +50,38 @@ import { REDIS, RedisModule } from './redis/redis.module.js';
     RedisModule,
     ThrottlerModule.forRootAsync({
       inject: [AppConfigService, REDIS],
-      useFactory: (config: AppConfigService, redis: Redis) => ({
-        throttlers: [
-          // Every request, by client IP (X-Forwarded-For from Nginx).
-          {
-            name: 'ip',
-            ttl: 60_000,
-            limit: config.get('RATE_LIMIT_IP_PER_MINUTE'),
-          },
-          // Signed-in requests, by account: one user behind many IPs too.
-          {
-            name: 'user',
-            ttl: 60_000,
-            limit: config.get('RATE_LIMIT_USER_PER_MINUTE'),
-            getTracker: (req: { user?: { id: string } }) => req.user?.id ?? '',
-            skipIf: (ctx: ExecutionContext) =>
-              !ctx.switchToHttp().getRequest<{ user?: unknown }>().user,
-          },
-        ],
-        // Shared by all replicas.
-        storage: new RedisThrottlerStorage(redis),
+      useFactory: (config: AppConfigService, redis: Redis) => {
         // WebSocket messages are not throttled (the seat map is public and
         // cheap); load tests turn limiting off.
-        skipIf: (ctx: ExecutionContext) =>
-          ctx.getType() !== 'http' || !config.get('RATE_LIMIT_ENABLED'),
-      }),
+        const skipAll = (ctx: ExecutionContext) =>
+          ctx.getType() !== 'http' || !config.get('RATE_LIMIT_ENABLED');
+        return {
+          throttlers: [
+            // Every request, by client IP (X-Forwarded-For from Nginx).
+            {
+              name: 'ip',
+              ttl: 60_000,
+              limit: config.get('RATE_LIMIT_IP_PER_MINUTE'),
+            },
+            // Signed-in requests, by account: one user behind many IPs too.
+            {
+              name: 'user',
+              ttl: 60_000,
+              limit: config.get('RATE_LIMIT_USER_PER_MINUTE'),
+              getTracker: (req: { user?: { id: string } }) =>
+                req.user?.id ?? '',
+              // A throttler's own skipIf replaces the common one, so it must
+              // repeat skipAll (before, load tests still counted this one).
+              skipIf: (ctx: ExecutionContext) =>
+                skipAll(ctx) ||
+                !ctx.switchToHttp().getRequest<{ user?: unknown }>().user,
+            },
+          ],
+          // Shared by all replicas.
+          storage: new RedisThrottlerStorage(redis),
+          skipIf: skipAll,
+        };
+      },
     }),
     QueueModule,
     HealthModule,

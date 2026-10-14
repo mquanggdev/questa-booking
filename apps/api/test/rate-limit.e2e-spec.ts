@@ -19,6 +19,7 @@ describe('Rate limiting (e2e)', () => {
   let b: TestApp;
   let userA: TestApp;
   let userB: TestApp;
+  let off: TestApp;
 
   beforeAll(async () => {
     const strictIp = {
@@ -27,11 +28,18 @@ describe('Rate limiting (e2e)', () => {
       RATE_LIMIT_USER_PER_MINUTE: 1000,
     };
     const looseIp = { ...strictIp, RATE_LIMIT_IP_PER_MINUTE: 1000 };
-    [a, b, userA, userB] = await Promise.all([
+    // Tiny limits, but limiting turned off (as for load tests).
+    const disabled = {
+      RATE_LIMIT_ENABLED: false,
+      RATE_LIMIT_IP_PER_MINUTE: 2,
+      RATE_LIMIT_USER_PER_MINUTE: 2,
+    };
+    [a, b, userA, userB, off] = await Promise.all([
       createTestApp({ config: strictIp }),
       createTestApp({ config: strictIp }),
       createTestApp({ config: looseIp }),
       createTestApp({ config: looseIp }),
+      createTestApp({ config: disabled }),
     ]);
   });
 
@@ -40,7 +48,7 @@ describe('Rate limiting (e2e)', () => {
   });
 
   afterAll(async () => {
-    for (const app of [userA, userB, a, b]) await app.close();
+    for (const app of [off, userA, userB, a, b]) await app.close();
   });
 
   it('two replicas share one per-IP counter: the limit holds in total, not per replica', async () => {
@@ -96,5 +104,20 @@ describe('Rate limiting (e2e)', () => {
 
     // Same IP, another account: its own counter.
     expect((await hold(userA, second.accessToken)).status).not.toBe(429);
+  });
+
+  it('RATE_LIMIT_ENABLED=false turns off every throttler, the per-account one included', async () => {
+    // Before the fix, the "user" throttler's own skipIf replaced the common
+    // one, so signed-in requests were still counted (and limited).
+    const user = await createUserAndLogin(off, Role.CUSTOMER);
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const res = await off
+        .http()
+        .get('/api/v1/users/me')
+        .set('Authorization', `Bearer ${user.accessToken}`);
+      statuses.push(res.status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 200, 200, 200]);
   });
 });
