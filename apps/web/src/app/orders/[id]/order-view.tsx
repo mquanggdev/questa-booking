@@ -8,9 +8,16 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ApiError, api, call } from '@/lib/api/client';
+import { ApiError, api, call, type Schemas } from '@/lib/api/client';
 import { ORDER_STATUS_LABEL, formatDateTime, formatVnd } from '@/lib/format';
 import { useRequireAuth } from '@/lib/use-require-auth';
+
+type PaymentProviderName = Schemas['PaymentProvidersDto']['available'][number];
+
+const PROVIDER_LABEL: Record<PaymentProviderName, string> = {
+  vnpay: 'VNPay (sandbox)',
+  fake: 'Cổng thanh toán giả lập',
+};
 
 /** Seconds left until `iso`, ticking every second. */
 function useCountdown(iso: string | undefined): number | null {
@@ -55,6 +62,12 @@ export function OrderView({ orderId }: { orderId: string }) {
     enabled: !!order,
   });
   const secondsLeft = useCountdown(order?.expiresAt);
+  // One button per gateway the API has enabled (VNPay sandbox, fake).
+  const { data: providers } = useQuery({
+    queryKey: ['payment-providers'],
+    queryFn: () => call(api.GET('/api/v1/payments/providers')),
+    staleTime: Infinity,
+  });
 
   if (status === 'authenticated' && !isCustomer) return <CustomerOnlyNotice />;
   if (loadError instanceof ApiError && loadError.status === 404) {
@@ -67,14 +80,14 @@ export function OrderView({ orderId }: { orderId: string }) {
   const pending = order.status === 'PENDING';
   const expired = pending && secondsLeft === 0;
 
-  const pay = async () => {
+  const pay = async (provider: PaymentProviderName) => {
     setError(null);
     setBusy(true);
     try {
       const checkout = await call(
         api.POST('/api/v1/orders/{id}/pay', {
           params: { path: { id: orderId } },
-          body: {},
+          body: { provider },
         }),
       );
       // Full navigation: the gateway (fake page or VNPay) is another site.
@@ -157,13 +170,26 @@ export function OrderView({ orderId }: { orderId: string }) {
       )}
 
       {pending && !expired && (
-        <div className="flex gap-3">
-          <Button className="flex-1" onClick={pay} disabled={busy}>
+        <div className="space-y-3">
+          <p className="text-sm font-medium">
             Thanh toán {formatVnd(order.totalAmount)}
-          </Button>
-          <Button variant="outline" onClick={cancel} disabled={busy}>
-            Hủy đơn
-          </Button>
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {(providers?.available ?? []).map((provider, i) => (
+              <Button
+                key={provider}
+                className="flex-1"
+                variant={i === 0 ? 'default' : 'secondary'}
+                onClick={() => pay(provider)}
+                disabled={busy}
+              >
+                {PROVIDER_LABEL[provider]}
+              </Button>
+            ))}
+            <Button variant="outline" onClick={cancel} disabled={busy}>
+              Hủy đơn
+            </Button>
+          </div>
         </div>
       )}
       {order.status === 'PAID' && (

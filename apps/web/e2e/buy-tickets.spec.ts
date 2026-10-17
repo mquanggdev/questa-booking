@@ -29,7 +29,7 @@ test('a new customer buys two seats and a standing ticket and gets QR tickets', 
   await expect(page.getByTestId('order-status')).toHaveText('Chờ thanh toán');
   await expect(page.getByTestId('countdown')).toBeVisible();
 
-  await page.getByRole('button', { name: /Thanh toán/ }).click();
+  await page.getByRole('button', { name: 'Cổng thanh toán giả lập' }).click();
   await expect(page).toHaveURL(/\/checkout\/fake-gateway/);
   await page.getByRole('button', { name: 'Thanh toán thành công' }).click();
 
@@ -84,7 +84,7 @@ test('cancelled at the gateway: the order stays payable, then the customer cance
   await expect(page).toHaveURL(/\/orders\//);
   const orderUrl = page.url();
 
-  await page.getByRole('button', { name: /Thanh toán/ }).click();
+  await page.getByRole('button', { name: 'Cổng thanh toán giả lập' }).click();
   await page.getByRole('button', { name: 'Hủy giao dịch' }).click();
   await expect(page.getByTestId('payment-result')).toHaveText(
     'Thanh toán chưa thành công',

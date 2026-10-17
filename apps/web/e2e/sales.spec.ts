@@ -37,7 +37,7 @@ test('the organizer sees a sale appear live on the sales dashboard', async ({
   await buyer.getByRole('button', { name: 'Thêm vé Đứng' }).click();
   await buyer.getByRole('button', { name: 'Giữ 2 vé' }).click();
   await expect(buyer).toHaveURL(/\/orders\//);
-  await buyer.getByRole('button', { name: /Thanh toán/ }).click();
+  await buyer.getByRole('button', { name: 'Cổng thanh toán giả lập' }).click();
   await buyer.getByRole('button', { name: 'Thanh toán thành công' }).click();
   await expect(buyer.getByTestId('payment-result')).toHaveText(
     'Thanh toán thành công',

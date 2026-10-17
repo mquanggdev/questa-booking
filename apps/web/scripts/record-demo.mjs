@@ -104,7 +104,7 @@ await page.getByRole('button', { name: /Giữ 4 vé/ }).click();
 // 3. The order, with its countdown; pay at the gateway.
 await page.waitForURL('**/orders/**');
 await pause(2500);
-await page.getByRole('button', { name: /Thanh toán/ }).click();
+await page.getByRole('button', { name: 'Cổng thanh toán giả lập' }).click();
 await page.waitForURL('**/checkout/fake-gateway**');
 await pause(2000);
 await page.getByRole('button', { name: 'Thanh toán thành công' }).click();

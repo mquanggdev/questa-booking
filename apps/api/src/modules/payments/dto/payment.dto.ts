@@ -25,6 +25,15 @@ export class PayOrderDto {
   provider?: (typeof PROVIDERS)[number];
 }
 
+export class PaymentProvidersDto {
+  @ApiProperty({
+    enum: PROVIDERS,
+    isArray: true,
+    description: 'Gateways a customer can pay with, the default first',
+  })
+  available: (typeof PROVIDERS)[number][];
+}
+
 export class CheckoutResponseDto {
   @ApiProperty({ format: 'uuid' })
   paymentId: string;

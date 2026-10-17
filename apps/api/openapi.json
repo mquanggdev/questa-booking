@@ -928,6 +928,28 @@
         ]
       }
     },
+    "/api/v1/payments/providers": {
+      "get": {
+        "operationId": "PaymentsController_available",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentProvidersDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Gateways a customer can pay with (the web app shows one button each)",
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/api/v1/payments/ipn/{provider}": {
       "get": {
         "operationId": "PaymentsController_ipn",
@@ -2098,6 +2120,25 @@
           "provider",
           "checkoutUrl",
           "expiresAt"
+        ]
+      },
+      "PaymentProvidersDto": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "vnpay",
+                "fake"
+              ]
+            },
+            "description": "Gateways a customer can pay with, the default first"
+          }
+        },
+        "required": [
+          "available"
         ]
       },
       "IpnResponseDto": {

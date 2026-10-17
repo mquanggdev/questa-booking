@@ -23,10 +23,16 @@ x-api-env: &api-env
   COOKIE_SECURE: 'true'
   SWAGGER_ENABLED: 'true'
   PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL, e.g. https://booking.example.com}
-  # The demo pays at the built-in fake gateway: no real money moves.
-  PAYMENT_PROVIDER: fake
+  # The demo always offers the built-in fake gateway (no real money moves).
+  # VNPay's sandbox is offered too once its merchant code is set in .env;
+  # PAYMENT_PROVIDER picks which one the web app shows first.
+  PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-fake}
   ALLOW_FAKE_PAYMENTS: 'true'
   FAKE_PAYMENT_SECRET: ${FAKE_PAYMENT_SECRET:?set FAKE_PAYMENT_SECRET}
+  VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+  VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+  VNPAY_URL: ${VNPAY_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+  VNPAY_API_URL: ${VNPAY_API_URL:-https://sandbox.vnpayment.vn/merchant_webapi/api/transaction}
   RATE_LIMIT_ENABLED: 'true'
   KAFKA_BROKERS: kafka:9092
   SMTP_URL: smtp://mailpit:1025

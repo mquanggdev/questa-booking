@@ -19,6 +19,16 @@ export class PaymentProvidersService {
     return this.config.get('PAYMENT_PROVIDER');
   }
 
+  /** Gateways a customer can pay with right now, the default first. */
+  get available(): ProviderName[] {
+    const names: ProviderName[] = [];
+    if (this.vnpay.configured) names.push('vnpay');
+    if (this.fake.enabled) names.push('fake');
+    return names.sort((a, b) =>
+      a === this.defaultName ? -1 : b === this.defaultName ? 1 : 0,
+    );
+  }
+
   find(name: string): PaymentProvider | null {
     if (name === 'vnpay' && this.vnpay.configured) return this.vnpay;
     if (name === 'fake' && this.fake.enabled) return this.fake;

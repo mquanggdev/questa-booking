@@ -15,14 +15,26 @@ import {
   FakeCompleteDto,
   FakeCompleteResponseDto,
   IpnResponseDto,
+  PaymentProvidersDto,
   PaymentReturnResponseDto,
 } from './dto/payment.dto.js';
 import { PaymentsService } from './payments.service.js';
+import { PaymentProvidersService } from './providers/payment-providers.service.js';
 
 @ApiTags('payments')
 @Controller('payments')
 export class PaymentsController {
-  constructor(private readonly payments: PaymentsService) {}
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly providers: PaymentProvidersService,
+  ) {}
+
+  /** Gateways a customer can pay with (the web app shows one button each) */
+  @Public()
+  @Get('providers')
+  available(): PaymentProvidersDto {
+    return { available: this.providers.available };
+  }
 
   /**
    * Instant Payment Notification, called by the gateway (VNPay uses GET).
