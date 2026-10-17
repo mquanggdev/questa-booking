@@ -26,12 +26,7 @@ Có mã rồi thì VNPay được bật **cạnh** cổng giả lập, không th
 
 ### Bản online
 
-Trên VPS, thêm hai dòng vào `~/questa-booking/.env` của user `deploy`, rồi chạy lại workflow **Deploy** (hoặc `IMAGE_TAG=$(cat .deployed-tag) docker compose -f docker-compose.prod.yml up -d api worker`):
-
-```dotenv
-VNPAY_TMN_CODE=<mã website>
-VNPAY_HASH_SECRET=<chuỗi bí mật>
-```
+Thêm hai secret `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` vào environment `production` trên GitHub (Settings → Environments), rồi chạy lại workflow **Deploy**. Workflow ghi chúng vào `.env` trên VPS ([deploy-vps.md](deploy-vps.md)). Đổi mã sau này cũng chỉ cần sửa secret rồi deploy lại.
 
 Bản online đã có địa chỉ công khai, nên không cần tunnel (bước 2). URL IPN khai báo ở bước 3 là `https://booking.quangtm.site/api/v1/payments/ipn/vnpay`. Cổng giả lập vẫn được giữ, để người xem demo không cần thẻ test.
 

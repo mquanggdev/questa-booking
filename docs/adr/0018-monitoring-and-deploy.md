@@ -117,6 +117,16 @@ Kết luận: không chậm đi. Chênh lệch giữa các lần đến từ má
 
 Trong lúc điều tra còn lộ ra một lỗi có từ giai đoạn 7a: throttler theo tài khoản có `skipIf` riêng, mà `@nestjs/throttler` dùng nó **thay cho** `skipIf` chung, nên `RATE_LIMIT_ENABLED=false` không tắt được throttler này. Đã sửa, có test e2e.
 
+### 8. Secret của ứng dụng nằm ở GitHub, không phải trong `.env` sửa tay trên VPS
+
+Ban đầu `.env` được sinh một lần ngay trên VPS, và workflow không đụng tới nó. Secret không bao giờ rời khỏi server, nhưng mỗi lần đổi một giá trị (ví dụ mã VNPay) lại phải SSH vào sửa tay. Đã chuyển sang:
+
+- mọi secret và cấu hình nằm trong environment `production` của GitHub;
+- mỗi lần deploy, workflow ghi lại `.env` (quyền `600`) rồi mới chạy `deploy.sh`;
+- `deploy/install-env.sh` từ chối thay `POSTGRES_PASSWORD`, vì PostgreSQL giữ mật khẩu từ lần khởi tạo: đổi biến mà không đổi mật khẩu thật thì API mất kết nối database. Bản trước được giữ ở `.env.prev`.
+
+Đánh đổi: secret được lưu thêm ở GitHub (đã mã hóa, chỉ đọc được trong job của environment đó) để đổi được mà không cần vào server.
+
 ## Phương án đã loại
 
 - **`@willsoto/nestjs-prometheus`.** Thêm một lớp bọc chỉ để làm việc `prom-client` vốn đã làm; worker vẫn cần server riêng.

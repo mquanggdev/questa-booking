@@ -5,8 +5,8 @@
 #   sh deploy/deploy.sh <image tag = git sha>
 #
 # The directory holds docker-compose.prod.yml, docker/ (Nginx, Prometheus,
-# Grafana config), this script, and .env with the secrets (created once by
-# hand, never in git).
+# Grafana config), this script, and .env with the secrets, which the
+# workflow writes from GitHub Secrets just before (deploy/install-env.sh).
 #
 # Pulls the images, starts the stack (migrations run first, in the
 # "migrate" service), waits until the API answers through this stack's
