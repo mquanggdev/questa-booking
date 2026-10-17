@@ -146,6 +146,7 @@ Every number comes from `pnpm loadtest <scenario>`: k6 inside the compose networ
 | 7b | first on-sale run, before fixing the stack | 28,457 × 502: Node's listen queue overflowed and a keep-alive race made Nginx mark both healthy replicas dead ([ADR-0016](docs/adr/0016-presale-codes-and-waiting-room.md)) |
 | **8: outbox + Kafka** | 5,000 buyers: hold → pay → tickets, then wait for the events | 500 `order.paid` events, each applied **exactly once** by all 3 consumers (**0 I7 violations**), audit and sales counters match; same throughput as phase 5 |
 | 8 | the worker (relay + consumers) killed 8 s into the run | after it restarts, every event is still applied exactly once: **0 violations** |
+| **9: Prometheus metrics on** | same on-sale rush (10,000 tickets, waiting room at 50/s) | 586 req/s, holds p50 **23 ms**, p95 **272 ms**, 0 errors, 0 violations. Interleaved with the phase 7b code on the same day: p95 2,079 / 263 / 1,629 ms (7b) vs 731 / 291 / 596 ms (now), so no slowdown; the spread between runs comes from the laptop |
 
 > A measurement bug (`docker compose run` silently recreated the API with default settings) invalidated three earlier comparisons. The load-test script now records the API's real configuration with every result; affected rows are marked and re-measured ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
@@ -170,7 +171,7 @@ Pushing a `v*` tag (or running the **Deploy** workflow by hand) builds three ima
 
 ## Known limits and next steps
 
-- **One machine, one node of everything.** PostgreSQL, Redis and Kafka have no replicas online; the demo shows behavior, not availability. Every benchmark was measured locally on a laptop, not on the VPS.
+- **One machine, one node of everything.** PostgreSQL, Redis and Kafka have no replicas online; the demo shows behavior, not availability. Every benchmark was measured locally on a laptop, not on the VPS, and the same run can vary several times over on it (free memory, Docker Desktop's state), so before/after comparisons are run interleaved on the same day.
 - **The ticket email consumer is the slowest part** at peak (above). Next: more partitions and consumer concurrency, and QR images generated once per ticket instead of per email.
 - **Payments online use the fake gateway.** The VNPay sandbox flow is implemented and documented, but has not been verified end to end with a working sandbox merchant.
 - **No admin interface.** Organizers create concerts and sale phases through the API (Swagger); the web app only has the sales dashboard for them.

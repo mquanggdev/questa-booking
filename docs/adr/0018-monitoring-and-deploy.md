@@ -103,6 +103,20 @@ Chạy theo [docs/deploy-vps.md](../deploy-vps.md), mọi bước của repo nà
 - `ssh-keyscan` đi kèm Windows không thương lượng được thuật toán trao đổi khóa với OpenSSH 8.9, nên `VPS_KNOWN_HOSTS` được lấy ngay trên VPS;
 - thư mục deploy nằm trong home của user SSH dùng cho CI (`deploy`), không phải của root.
 
+### 7. Metrics không làm chậm đường giữ vé, và cách đo để biết điều đó
+
+Lần đo `on-sale` đầu tiên của giai đoạn 9 cho giữ vé p95 2,2 s, so với 99 ms ở giai đoạn 7b. Các lần đo tiếp theo dao động từ 0,3 s tới 10 s, bất kể Prometheus bật hay tắt, Kafka chạy hay dừng. Cuối cùng chính Docker Desktop treo hẳn. Sau khi khởi động lại nó, code 7b và code hiện tại được đo **xen kẽ** trong cùng một buổi, mỗi lần trên volume mới:
+
+| Lượt | Code 7b | Code giai đoạn 9 |
+| --- | --- | --- |
+| 1 (RAM trống ~0,6 GB) | 2.079 ms, 5 lỗi 5xx | 731 ms, 0 lỗi |
+| 2 (~4,5 GB) | 263 ms | 291 ms |
+| 3 (~4,6 GB) | 1.629 ms | 596 ms |
+
+Kết luận: không chậm đi. Chênh lệch giữa các lần đến từ máy đo. Từ nay, mọi phép so sánh trước và sau được chạy xen kẽ, nhiều lần, có giới hạn thời gian cho mỗi lần chạy; không so một số đo hôm nay với một số đo của ngày khác.
+
+Trong lúc điều tra còn lộ ra một lỗi có từ giai đoạn 7a: throttler theo tài khoản có `skipIf` riêng, mà `@nestjs/throttler` dùng nó **thay cho** `skipIf` chung, nên `RATE_LIMIT_ENABLED=false` không tắt được throttler này. Đã sửa, có test e2e.
+
 ## Phương án đã loại
 
 - **`@willsoto/nestjs-prometheus`.** Thêm một lớp bọc chỉ để làm việc `prom-client` vốn đã làm; worker vẫn cần server riêng.

@@ -148,6 +148,7 @@ Mọi con số đều từ `pnpm loadtest <kịch bản>`: k6 chạy trong mạn
 | 7b | lần chạy mở bán đầu tiên, trước khi sửa | 28.457 lỗi 502: hàng đợi kết nối của Node tràn, và lỗi đua keep-alive khiến Nginx đánh dấu cả 2 instance khỏe là chết ([ADR-0016](docs/adr/0016-presale-codes-and-waiting-room.md)) |
 | **8: outbox + Kafka** | 5.000 khách: giữ vé → thanh toán → nhận vé, rồi chờ sự kiện xử lý xong | 500 sự kiện `order.paid`, mỗi sự kiện được cả 3 consumer áp dụng **đúng một lần** (**0 vi phạm I7**), audit và thống kê khớp; thông lượng như giai đoạn 5 |
 | 8 | giết worker (relay + consumer) ở giây thứ 8 | sau khi khởi động lại, mọi sự kiện vẫn được áp dụng đúng một lần: **0 vi phạm** |
+| **9: bật metrics Prometheus** | cùng cú dồn tải mở bán (10.000 vé, hàng chờ 50 người/s) | 586 req/s, giữ vé p50 **23 ms**, p95 **272 ms**, 0 lỗi, 0 vi phạm. Đo xen kẽ với code giai đoạn 7b trong cùng ngày: p95 2.079 / 263 / 1.629 ms (7b) so với 731 / 291 / 596 ms (hiện tại), nên không chậm đi; chênh lệch giữa các lần đến từ laptop |
 
 > Một lỗi đo (`docker compose run` âm thầm tạo lại API với cấu hình mặc định) đã làm sai ba phép so sánh trước đó. Script load test giờ ghi lại cấu hình thật của API cùng mỗi kết quả; các dòng bị ảnh hưởng đã được đánh dấu và đo lại ([ADR-0011](docs/adr/0011-benchmark-config-integrity.md)).
 
@@ -172,7 +173,7 @@ Trong lần load test mở bán ở trên, dashboard cho thấy điều mà số
 
 ## Giới hạn đã biết và hướng cải tiến
 
-- **Một máy, mỗi thành phần một node.** PostgreSQL, Redis và Kafka không có bản sao ở bản online; bản demo cho thấy hành vi, không phải độ sẵn sàng. Mọi benchmark được đo ở local trên laptop, không phải trên VPS.
+- **Một máy, mỗi thành phần một node.** PostgreSQL, Redis và Kafka không có bản sao ở bản online; bản demo cho thấy hành vi, không phải độ sẵn sàng. Mọi benchmark được đo ở local trên laptop, không phải trên VPS, và cùng một kịch bản trên máy này có thể chênh nhau vài lần giữa các lần chạy (RAM trống, trạng thái của Docker Desktop), nên các phép so sánh trước và sau được chạy xen kẽ trong cùng một ngày.
 - **Consumer gửi email vé là phần chậm nhất** lúc tải đỉnh (ở trên). Hướng cải tiến: thêm partition và số consumer chạy song song, sinh ảnh QR một lần cho mỗi vé thay vì cho mỗi email.
 - **Thanh toán ở bản online dùng cổng giả lập.** Luồng VNPay sandbox đã được cài đặt và có tài liệu, nhưng chưa được kiểm chứng trọn vẹn với một merchant sandbox còn hoạt động.
 - **Không có giao diện quản trị.** Ban tổ chức tạo concert và đợt mở bán qua API (Swagger); trên web họ chỉ có trang theo dõi mở bán.
