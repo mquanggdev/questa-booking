@@ -47,6 +47,8 @@ cut -d= -f1 .env    # chỉ in tên biến để kiểm tra
 
 `DEMO_ORGANIZER_PASSWORD` được ghi công khai trong README, vì tài khoản đó chỉ xem được.
 
+Tùy chọn: thêm `VNPAY_TMN_CODE` và `VNPAY_HASH_SECRET` để bật thêm thanh toán qua VNPay sandbox, cạnh cổng giả lập ([vnpay-sandbox.md](vnpay-sandbox.md)).
+
 ### 4. GitHub
 
 Trong repo, vào **Settings → Environments**, tạo environment `production` (có thể bật "Required reviewers" để mỗi lần deploy phải bấm duyệt), rồi thêm:

@@ -22,6 +22,19 @@ VNPAY_API_URL=https://sandbox.vnpayment.vn/merchant_webapi/api/transaction
 
 Khi `PAYMENT_PROVIDER=vnpay` mà thiếu mã hoặc secret, API từ chối khởi động và báo rõ biến nào còn thiếu.
 
+Có mã rồi thì VNPay được bật **cạnh** cổng giả lập, không thay thế nó: trang đơn hàng hiện một nút cho mỗi cổng đang bật (`GET /api/v1/payments/providers`). `PAYMENT_PROVIDER` chỉ quyết định nút nào đứng đầu. Ở máy, cổng giả lập còn cần `ALLOW_FAKE_PAYMENTS=true` như mọi khi.
+
+### Bản online
+
+Trên VPS, thêm hai dòng vào `~/questa-booking/.env` của user `deploy`, rồi chạy lại workflow **Deploy** (hoặc `IMAGE_TAG=$(cat .deployed-tag) docker compose -f docker-compose.prod.yml up -d api worker`):
+
+```dotenv
+VNPAY_TMN_CODE=<mã website>
+VNPAY_HASH_SECRET=<chuỗi bí mật>
+```
+
+Bản online đã có địa chỉ công khai, nên không cần tunnel (bước 2). URL IPN khai báo ở bước 3 là `https://booking.quangtm.site/api/v1/payments/ipn/vnpay`. Cổng giả lập vẫn được giữ, để người xem demo không cần thẻ test.
+
 ## 2. Mở API ra Internet để VNPay gọi IPN
 
 VNPay gọi IPN **từ máy chủ của họ**, nên không gọi được `localhost`. Cần một URL công khai trỏ về API. Cách nhanh nhất là dùng tunnel tạm, ví dụ Cloudflare Quick Tunnel (cài `cloudflared`, không cần tài khoản):

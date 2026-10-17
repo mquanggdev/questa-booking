@@ -6,7 +6,7 @@ Backend bán vé concert chịu được lúc hàng nghìn người cùng tranh 
 
 **Bản demo:** <https://booking.quangtm.site> · [Swagger](https://booking.quangtm.site/api/docs) · [Grafana](https://grafana.quangtm.site) (chỉ xem)
 
-- Đăng ký tài khoản bất kỳ để mua vé. Thanh toán qua cổng giả lập, không mất tiền thật.
+- Đăng ký tài khoản bất kỳ để mua vé. Thanh toán bằng cổng giả lập có sẵn, hoặc bằng VNPay sandbox với [thẻ test](https://sandbox.vnpayment.vn/apis/vnpay-demo/). Cả hai đều không mất tiền thật.
 - Góc nhìn ban tổ chức: `demo@questa.test` / `demo-f175ef55`. Chỉ xem được: mọi thao tác ghi đều trả `403`.
 
 ![Mua vé: chọn ghế, giữ vé, thanh toán, nhận vé QR](docs/assets/buying-flow.gif)
@@ -104,7 +104,7 @@ Deploy chạy từ GitHub Actions khi đẩy tag phiên bản: build image, đ�
 
 - Toàn bộ chạy trên một VPS, PostgreSQL, Redis và Kafka mỗi thứ một node. Đủ cho demo, chưa đủ cho độ sẵn sàng thật.
 - Consumer gửi email vé là phần chậm nhất lúc cao điểm (trễ khoảng 28 s ở p95), vì nó sinh mã QR và gửi mail lần lượt từng sự kiện.
-- Bản demo dùng cổng thanh toán giả lập. Email nằm lại trong Mailpit trên server, không gửi đi thật.
+- Thanh toán chỉ chạy trên cổng giả lập hoặc VNPay sandbox, chưa bao giờ ở môi trường thật. Email nằm lại trong Mailpit trên server, không gửi đi thật.
 - Chưa có giao diện quản trị: ban tổ chức tạo concert và đợt mở bán qua API.
 
 ## Giấy phép

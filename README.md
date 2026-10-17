@@ -6,7 +6,7 @@ A concert ticketing backend that holds up when thousands of people try to buy th
 
 **Live demo:** <https://booking.quangtm.site> · [Swagger](https://booking.quangtm.site/api/docs) · [Grafana](https://grafana.quangtm.site) (read-only)
 
-- Register any account to buy tickets. Payment goes through a fake gateway, no real money.
+- Register any account to buy tickets. Pay with the built-in fake gateway, or with VNPay's sandbox using its [test cards](https://sandbox.vnpayment.vn/apis/vnpay-demo/). No real money either way.
 - Organizer view: `demo@questa.test` / `demo-f175ef55`. Read-only: every write returns `403`.
 
 ![Buying tickets: pick seats, hold, pay, get QR tickets](docs/assets/buying-flow.gif)
@@ -104,7 +104,7 @@ Deploys run from GitHub Actions on a version tag: build images, push to GHCR, SS
 
 - Everything runs on one VPS with a single PostgreSQL, Redis and Kafka node. Good enough for a demo, not for real availability.
 - The ticket email consumer is the slowest part at peak (about 28 s behind at p95), because it renders QR codes and sends mail one event at a time.
-- The online demo uses the fake payment gateway. Emails stay in Mailpit on the server and are never delivered.
+- Payments run on the fake gateway or VNPay's sandbox, never in production. Emails stay in Mailpit on the server and are never delivered.
 - No admin UI: organizers create concerts and sale phases through the API.
 
 ## License
